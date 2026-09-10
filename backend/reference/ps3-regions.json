@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "software_title_ids": [
+    "BLES00115",
+    "BLES00148",
+    "BLES00149",
+    "BLES00154",
+    "BLES00155",
+    "BLES00156",
+    "BLUS30072",
+    "BLJS10013"
+  ],
+  "additional_product_ids": [
+    "BLJS10031",
+    "BLJM60173"
+  ],
+  "note": "Product IDs are inventory labels, not loader or UI compatibility proofs. Additional uncatalogued IDs remain inspectable. Version comes from supplied PARAM.SFO, never from region. Japanese product/software ID associations require checking the supplied SFO.",
+  "sources": [
+    "https://serialstation.com/games/82e94799-d6c8-4c04-bb54-a203017a6ed3",
+    "https://www.trisaster.de/page/index.php?topic=109",
+    "https://vgcollect.com/forum/index.php?topic=9790.0"
+  ],
+  "ui_files": {
+    "0a23c3b27a8989773f091789952c1274c674b4f7ad8c9a9c8e82cda6912fe349": {
+      "label": "Existing verified UI reference",
+      "title_id": null,
+      "update": "unknown",
+      "editor_profile": "ui-menu-layout-v1.json.zlib"
+    },
+    "31a7d82e8cc53724f4d5d73396a05389feba25c7294552858ea4db5f81ca4bc4": {
+      "label": "BLUS-30072 supplied UI",
+      "title_id": "BLUS30072",
+      "update": "unknown",
+      "editor_profile": "ui-menu-layout-blus30072.json.zlib"
+    }
+  }
+}

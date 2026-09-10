@@ -1,0 +1,134 @@
+{
+  "revision": "FIX114",
+  "curve_repair_contract": {
+    "curve_types": [
+      "curve::raw",
+      "curve::sound",
+      "curve::volmod",
+      "curve::Limit",
+      "curve::Pitch",
+      "curve::EQ",
+      "curve::filter",
+      "curve::define"
+    ],
+    "required_relocation_block": 4,
+    "source_of_truth": "raw packed XAssetHeader u32 stored on the explicit block-4 relocation",
+    "forbidden_sources": [
+      "existing xasset_children value",
+      "relocation offset decoded/re-encoded as an XAsset index",
+      "top-level XAsset pool index arithmetic",
+      "free-standing YAML/JSON hex literal not attached to the relocation raw field"
+    ]
+  },
+  "known_good_getaway": {
+    "top_level_xassets": 767,
+    "script_strings": 469,
+    "technique_sets": 238,
+    "images": {
+      "total": 735,
+      "dxt1": 228,
+      "dxt3": 33,
+      "dxt5": 474,
+      "cubemap": 1
+    },
+    "materials": {
+      "roots": 481,
+      "ps3_state_bits": 2931
+    },
+    "xmodels": {
+      "models": 333,
+      "surfaces": 1314,
+      "vertices": 561815,
+      "triangles": 543202
+    },
+    "clipmap": {
+      "planes": 4304,
+      "static_models": 3449,
+      "brushes": 6639,
+      "triangles": 18708
+    },
+    "gfxworld": {
+      "surfaces": 4183,
+      "vertices": 133901,
+      "indices": 279741,
+      "cells": 1
+    },
+    "sound": {
+      "top_level": 160,
+      "iwd_payloads": 17,
+      "packed_refs": 1134,
+      "fix113_resolved_before_curve_repair": 1126,
+      "structurally_equivalent_phases": 4
+    },
+    "rawfiles": 7,
+    "known_hardware_load_ff_sha256": "428A9C45E0FB167CE8C6495760E8E2A524F8CE93A76D445D23053A31B4B84E50"
+  },
+  "load_zone_retail_profile": {
+    "xasset_type_order": [
+      "TechniqueSet",
+      "Material",
+      "Material",
+      "Material",
+      "RawFile"
+    ],
+    "$victorybackdrop": {
+      "sortKey": 43,
+      "hashIndex": 0,
+      "cameraRegion": 3,
+      "stateBitsEntryHex": "ffffffff00ffffffffffffffffffffffffffffffffffffffffff",
+      "stateBits": [
+        "FFFFFFFF",
+        "19289165",
+        "E00E0002"
+      ],
+      "texture": {
+        "hash": "A0AB1041",
+        "nameStart": 99,
+        "nameEnd": 112,
+        "sampler": 10,
+        "semantic": 0
+      },
+      "image": {
+        "format": 134,
+        "width": 1024,
+        "height": 1024,
+        "mips": 11,
+        "bytes": 699136
+      }
+    },
+    ",$defeatbackdrop": {
+      "sortKey": 0,
+      "atlasRows": 0,
+      "atlasCols": 0,
+      "techniqueSet": null,
+      "tableCountsMustBeZero": true
+    },
+    "$levelbriefing": {
+      "sortKey": 4,
+      "hashIndex": 0,
+      "cameraRegion": 3,
+      "stateBits": [
+        "FFFFFFFF",
+        "18128812",
+        "E00E0002"
+      ],
+      "texture": {
+        "sampler": 226,
+        "semantic": 0
+      },
+      "image": {
+        "width": 1024,
+        "height": 1024,
+        "mips": 1,
+        "bytes": 524288
+      }
+    }
+  },
+  "fidelity_fail_conditions": {
+    "NeutralizedOutOfRangePcMaterialStateIndexCount": 0,
+    "Ps3TechniqueUnsupportedCustomCount": 0,
+    "AllTechniqueSetsResolvedToNativePs3References": true,
+    "AllVertexStreamsResolved": true,
+    "AllIndexStreamsResolved": true
+  }
+}

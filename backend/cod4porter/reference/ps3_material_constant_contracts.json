@@ -1,0 +1,165 @@
+{
+  "provenance": "IW3 PS3 code_post_gfx_mp, ui_mp and common_mp; loaded with the supplied CoD4 executable. MaterialPass argument types 0 and 6 reference named material constants. Names and hashes only; no shader programs.",
+  "techniques": {
+    "2d": [],
+    "cinematic": [],
+    "clear_alpha_stencil": [],
+    "color_channel_mixer": [],
+    "default": [],
+    "depthprepass": [],
+    "distortion_scale_zfeather": [
+      "f37b6913"
+    ],
+    "dof_downsample": [],
+    "dof_near_coc": [],
+    "effect": [],
+    "effect_add": [],
+    "effect_add_eyeoffset": [
+      "0812c0a9"
+    ],
+    "effect_add_nofog": [],
+    "effect_falloff": [
+      "3d05a1f2",
+      "6b1da6fa",
+      "bdde5cf5"
+    ],
+    "effect_falloff_add_nofog": [
+      "3d05a1f2",
+      "6b1da6fa",
+      "bdde5cf5"
+    ],
+    "effect_nofog": [],
+    "effect_zfeather": [
+      "4d7ea234"
+    ],
+    "effect_zfeather_add": [
+      "4d7ea234"
+    ],
+    "effect_zfeather_add_nofog": [
+      "4d7ea234"
+    ],
+    "effect_zfeather_falloff_add": [
+      "3d05a1f2",
+      "4d7ea234",
+      "6b1da6fa",
+      "bdde5cf5"
+    ],
+    "effect_zfeather_falloff_add_nofog": [
+      "3d05a1f2",
+      "4d7ea234",
+      "6b1da6fa",
+      "bdde5cf5"
+    ],
+    "effect_zfeather_nofog": [
+      "4d7ea234"
+    ],
+    "filter_symmetric_1": [],
+    "filter_symmetric_2": [],
+    "filter_symmetric_3": [],
+    "filter_symmetric_4": [],
+    "filter_symmetric_5": [],
+    "filter_symmetric_6": [],
+    "filter_symmetric_7": [],
+    "filter_symmetric_8": [],
+    "floatz": [],
+    "floatzdisplay": [],
+    "glow_apply_bloom": [],
+    "glow_apply_sky_bleed": [],
+    "glow_consistent_setup": [],
+    "glow_setup": [],
+    "laser": [],
+    "m_effect": [],
+    "m_l_sm_b0c0": [],
+    "m_l_sm_b0c0n0s0": [
+      "3d9994dc"
+    ],
+    "m_l_sm_b0c0s0": [
+      "3d9994dc"
+    ],
+    "m_l_sm_r0c0": [],
+    "m_l_sm_r0c0d0s0": [
+      "08d36a09",
+      "3d9994dc"
+    ],
+    "m_l_sm_r0c0n0": [],
+    "m_l_sm_r0c0n0s0": [
+      "3d9994dc"
+    ],
+    "m_l_sm_r0c0s0": [
+      "3d9994dc"
+    ],
+    "m_l_sm_skin_r0c0n0s0": [
+      "3d9994dc"
+    ],
+    "m_l_sm_t0c0s0": [
+      "3d9994dc"
+    ],
+    "m_reflexsight": [
+      "08d36a09"
+    ],
+    "m_unlit": [],
+    "m_unlit_add": [],
+    "mc_effect_nofog": [],
+    "mc_l_sm_b0c0": [],
+    "mc_l_sm_b0c0n0": [],
+    "mc_l_sm_b0c0n0s0": [
+      "3d9994dc"
+    ],
+    "mc_l_sm_b0c0s0": [
+      "3d9994dc"
+    ],
+    "mc_l_sm_flag_t0c0n0s0": [
+      "3d9994dc"
+    ],
+    "mc_l_sm_r0c0": [],
+    "mc_l_sm_r0c0d0s0": [
+      "08d36a09",
+      "3d9994dc"
+    ],
+    "mc_l_sm_r0c0n0s0": [
+      "3d9994dc"
+    ],
+    "mc_l_sm_r0c0s0": [
+      "3d9994dc"
+    ],
+    "mc_l_sm_t0c0s0": [
+      "3d9994dc"
+    ],
+    "particle_cloud": [],
+    "particle_cloud_add": [],
+    "particle_cloud_outdoor": [],
+    "particle_cloud_outdoor_add": [],
+    "passthru_alpha": [],
+    "passthru_film": [],
+    "passthru_vertalpha": [],
+    "pixel_cost_add": [],
+    "pixel_cost_color_code": [],
+    "post_light": [],
+    "postfx": [],
+    "postfx_color": [],
+    "postfx_dof": [],
+    "postfx_dof_color": [],
+    "processed_floatz": [],
+    "shadowcaster": [],
+    "shadowclear": [],
+    "shadowcookieblur": [],
+    "shadowcookieoverlay": [],
+    "shadowoverlay": [],
+    "shell_shock": [],
+    "shell_shock_flashed": [],
+    "small_blur": [],
+    "stencildisplay": [],
+    "stencilshadow": [],
+    "tools": [],
+    "unlit": [],
+    "unlit_alphatest": [],
+    "wc_l_sm_b0c0": [],
+    "wc_l_sm_b0c0n0": [],
+    "wc_l_sm_b0c0n0s0": [
+      "3d9994dc"
+    ],
+    "wc_l_sm_b0c0s0": [
+      "3d9994dc"
+    ]
+  }
+}

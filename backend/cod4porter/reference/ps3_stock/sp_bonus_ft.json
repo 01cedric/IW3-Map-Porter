@@ -1,0 +1,15 @@
+{
+  "schema": "iw3-ps3-stock-image-donor/v1",
+  "name": "sp_bonus_ft",
+  "map_type": 5,
+  "ps3_format": 134,
+  "level_count": 1,
+  "semantic": 2,
+  "category": 3,
+  "width": 1024,
+  "height": 1024,
+  "depth": 1,
+  "resource_bytes": 3145728,
+  "sha256": "87F65FD5A549200EC3F264289C53A4329A04314907DFEC44B44F3F8F835FFF28",
+  "provenance": "Version09 audited PS3 stock donor; payload begins the global delayed-image FIFO"
+}

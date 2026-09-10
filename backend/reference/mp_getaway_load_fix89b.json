@@ -1,0 +1,7 @@
+{
+  "name": "Fix89B mp_getaway_load hardware baseline",
+  "purpose": "Known PS3 hardware-working load-zone profile; used only for mp_getaway _load.ff regeneration/readback.",
+  "sha256": "428A9C45E0FB167CE8C6495760E8E2A524F8CE93A76D445D23053A31B4B84E50",
+  "asset_order": ["TechniqueSet", "Material", "Material", "Material", "RawFile"],
+  "hardware_status": "load -> join -> spawn known-good baseline"
+}

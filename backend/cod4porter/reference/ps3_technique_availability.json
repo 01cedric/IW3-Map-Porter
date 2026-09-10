@@ -1,0 +1,902 @@
+{
+ "schema": "iw3-ps3-technique-availability/v1",
+ "note": "a name here is available to a PS3 map zone: it is either owned by an installed support zone or referenced by a shipping Retail PS3 map zone",
+ "zones_scanned": [
+  {
+   "path": "reference/retail/code_post_gfx_mp.ff",
+   "kind": "support",
+   "zone_bytes": 1703936,
+   "declared_techset_xassets": 45,
+   "technique_names": 10
+  },
+  {
+   "path": "reference/retail/common_mp.ff",
+   "kind": "support",
+   "zone_bytes": 78512128,
+   "declared_techset_xassets": 55,
+   "technique_names": 47
+  },
+  {
+   "path": "reference/retail/mp_crash.ff",
+   "kind": "retail_map",
+   "zone_bytes": 134152192,
+   "declared_techset_xassets": 98,
+   "technique_names": 65
+  },
+  {
+   "path": "reference/retail/mp_shipment.ff",
+   "kind": "retail_map",
+   "zone_bytes": 88342528,
+   "declared_techset_xassets": 69,
+   "technique_names": 52
+  },
+  {
+   "path": "reference/retail/mp_shipment_load.ff",
+   "kind": "retail_map",
+   "zone_bytes": 1245184,
+   "declared_techset_xassets": 1,
+   "technique_names": 1
+  },
+  {
+   "path": "reference/retail/ui_mp.ff",
+   "kind": "support",
+   "zone_bytes": 34799616,
+   "declared_techset_xassets": 1,
+   "technique_names": 1
+  }
+ ],
+ "entries": [
+  {
+   "name": "2d",
+   "sources": [
+    "version13_bundled_catalog",
+    "retail_map:mp_crash:referenced",
+    "retail_map:mp_shipment:referenced",
+    "retail_map:mp_shipment_load:referenced",
+    "support:code_post_gfx_mp:owned",
+    "support:common_mp:referenced",
+    "support:ui_mp:referenced"
+   ]
+  },
+  {
+   "name": "cinematic",
+   "sources": [
+    "version13_bundled_catalog",
+    "support:code_post_gfx_mp:owned"
+   ]
+  },
+  {
+   "name": "clear_alpha_stencil",
+   "sources": [
+    "version13_bundled_catalog"
+   ]
+  },
+  {
+   "name": "color_channel_mixer",
+   "sources": [
+    "version13_bundled_catalog"
+   ]
+  },
+  {
+   "name": "depthprepass",
+   "sources": [
+    "version13_bundled_catalog",
+    "support:code_post_gfx_mp:owned"
+   ]
+  },
+  {
+   "name": "distortion_scale_zfeather",
+   "sources": [
+    "retail_map:mp_crash:referenced",
+    "retail_map:mp_shipment:referenced",
+    "support:common_mp:owned"
+   ]
+  },
+  {
+   "name": "dof_downsample",
+   "sources": [
+    "version13_bundled_catalog"
+   ]
+  },
+  {
+   "name": "dof_near_coc",
+   "sources": [
+    "version13_bundled_catalog"
+   ]
+  },
+  {
+   "name": "effect",
+   "sources": [
+    "retail_map:mp_crash:referenced",
+    "retail_map:mp_shipment:referenced",
+    "support:common_mp:owned"
+   ]
+  },
+  {
+   "name": "effect_add_nofog",
+   "sources": [
+    "retail_map:mp_crash:referenced",
+    "retail_map:mp_shipment:referenced",
+    "support:common_mp:owned"
+   ]
+  },
+  {
+   "name": "effect_falloff",
+   "sources": [
+    "support:common_mp:owned"
+   ]
+  },
+  {
+   "name": "effect_falloff_add_nofog",
+   "sources": [
+    "support:common_mp:owned"
+   ]
+  },
+  {
+   "name": "effect_nofog",
+   "sources": [
+    "version13_bundled_catalog",
+    "retail_map:mp_crash:referenced",
+    "retail_map:mp_shipment:referenced",
+    "support:code_post_gfx_mp:owned",
+    "support:common_mp:referenced"
+   ]
+  },
+  {
+   "name": "effect_zfeather",
+   "sources": [
+    "retail_map:mp_crash:referenced",
+    "retail_map:mp_shipment:referenced",
+    "support:common_mp:owned"
+   ]
+  },
+  {
+   "name": "effect_zfeather_add",
+   "sources": [
+    "retail_map:mp_crash:referenced",
+    "retail_map:mp_shipment:referenced",
+    "support:common_mp:owned"
+   ]
+  },
+  {
+   "name": "effect_zfeather_add_nofog",
+   "sources": [
+    "retail_map:mp_crash:referenced",
+    "retail_map:mp_shipment:referenced",
+    "support:common_mp:owned"
+   ]
+  },
+  {
+   "name": "effect_zfeather_falloff",
+   "sources": [
+    "retail_map:mp_crash:owned"
+   ]
+  },
+  {
+   "name": "effect_zfeather_falloff_add",
+   "sources": [
+    "retail_map:mp_crash:referenced",
+    "support:common_mp:owned"
+   ]
+  },
+  {
+   "name": "effect_zfeather_falloff_add_nofog",
+   "sources": [
+    "support:common_mp:owned"
+   ]
+  },
+  {
+   "name": "effect_zfeather_nofog",
+   "sources": [
+    "retail_map:mp_crash:referenced",
+    "retail_map:mp_shipment:referenced",
+    "support:common_mp:owned"
+   ]
+  },
+  {
+   "name": "filter_symmetric_1",
+   "sources": [
+    "version13_bundled_catalog"
+   ]
+  },
+  {
+   "name": "filter_symmetric_2",
+   "sources": [
+    "version13_bundled_catalog"
+   ]
+  },
+  {
+   "name": "filter_symmetric_3",
+   "sources": [
+    "version13_bundled_catalog"
+   ]
+  },
+  {
+   "name": "filter_symmetric_4",
+   "sources": [
+    "version13_bundled_catalog"
+   ]
+  },
+  {
+   "name": "filter_symmetric_5",
+   "sources": [
+    "version13_bundled_catalog"
+   ]
+  },
+  {
+   "name": "filter_symmetric_6",
+   "sources": [
+    "version13_bundled_catalog"
+   ]
+  },
+  {
+   "name": "filter_symmetric_7",
+   "sources": [
+    "version13_bundled_catalog"
+   ]
+  },
+  {
+   "name": "filter_symmetric_8",
+   "sources": [
+    "version13_bundled_catalog"
+   ]
+  },
+  {
+   "name": "floatz",
+   "sources": [
+    "version13_bundled_catalog"
+   ]
+  },
+  {
+   "name": "floatzdisplay",
+   "sources": [
+    "version13_bundled_catalog"
+   ]
+  },
+  {
+   "name": "glow_apply_bloom",
+   "sources": [
+    "version13_bundled_catalog"
+   ]
+  },
+  {
+   "name": "glow_apply_sky_bleed",
+   "sources": [
+    "version13_bundled_catalog"
+   ]
+  },
+  {
+   "name": "glow_consistent_setup",
+   "sources": [
+    "version13_bundled_catalog"
+   ]
+  },
+  {
+   "name": "glow_setup",
+   "sources": [
+    "version13_bundled_catalog"
+   ]
+  },
+  {
+   "name": "m_ambient_t0c0",
+   "sources": [
+    "retail_map:mp_crash:owned",
+    "retail_map:mp_shipment:owned"
+   ]
+  },
+  {
+   "name": "m_effect",
+   "sources": [
+    "support:common_mp:owned"
+   ]
+  },
+  {
+   "name": "m_l_sm_b0c0",
+   "sources": [
+    "retail_map:mp_crash:referenced",
+    "support:common_mp:owned"
+   ]
+  },
+  {
+   "name": "m_l_sm_b0c0n0",
+   "sources": [
+    "retail_map:mp_shipment:owned"
+   ]
+  },
+  {
+   "name": "m_l_sm_b0c0n0s0",
+   "sources": [
+    "retail_map:mp_crash:referenced",
+    "retail_map:mp_shipment:referenced",
+    "support:common_mp:owned"
+   ]
+  },
+  {
+   "name": "m_l_sm_b0c0s0",
+   "sources": [
+    "retail_map:mp_crash:referenced",
+    "retail_map:mp_shipment:referenced",
+    "support:common_mp:owned"
+   ]
+  },
+  {
+   "name": "m_l_sm_r0c0",
+   "sources": [
+    "retail_map:mp_crash:referenced",
+    "retail_map:mp_shipment:referenced",
+    "support:common_mp:owned"
+   ]
+  },
+  {
+   "name": "m_l_sm_r0c0d0",
+   "sources": [
+    "retail_map:mp_crash:owned"
+   ]
+  },
+  {
+   "name": "m_l_sm_r0c0d0n0s0",
+   "sources": [
+    "retail_map:mp_crash:owned"
+   ]
+  },
+  {
+   "name": "m_l_sm_r0c0d0s0",
+   "sources": [
+    "support:common_mp:owned"
+   ]
+  },
+  {
+   "name": "m_l_sm_r0c0n0",
+   "sources": [
+    "retail_map:mp_crash:referenced",
+    "retail_map:mp_shipment:referenced",
+    "support:common_mp:owned"
+   ]
+  },
+  {
+   "name": "m_l_sm_r0c0n0s0",
+   "sources": [
+    "retail_map:mp_crash:referenced",
+    "retail_map:mp_shipment:referenced",
+    "support:common_mp:owned"
+   ]
+  },
+  {
+   "name": "m_l_sm_r0c0s0",
+   "sources": [
+    "retail_map:mp_crash:referenced",
+    "retail_map:mp_shipment:referenced",
+    "support:common_mp:owned"
+   ]
+  },
+  {
+   "name": "m_l_sm_skin_r0c0n0s0",
+   "sources": [
+    "retail_map:mp_crash:referenced",
+    "support:common_mp:owned"
+   ]
+  },
+  {
+   "name": "m_l_sm_t0c0n0",
+   "sources": [
+    "retail_map:mp_crash:owned"
+   ]
+  },
+  {
+   "name": "m_l_sm_t0c0n0s0",
+   "sources": [
+    "retail_map:mp_crash:owned",
+    "retail_map:mp_shipment:owned"
+   ]
+  },
+  {
+   "name": "m_l_sm_t0c0s0",
+   "sources": [
+    "support:common_mp:owned"
+   ]
+  },
+  {
+   "name": "m_l_t0c0n0s0",
+   "sources": [
+    "retail_map:mp_shipment:owned"
+   ]
+  },
+  {
+   "name": "m_shadowcaster",
+   "sources": [
+    "retail_map:mp_crash:owned",
+    "retail_map:mp_shipment:owned"
+   ]
+  },
+  {
+   "name": "m_unlit",
+   "sources": [
+    "retail_map:mp_crash:referenced",
+    "retail_map:mp_shipment:referenced",
+    "support:common_mp:owned"
+   ]
+  },
+  {
+   "name": "m_unlit_add",
+   "sources": [
+    "support:common_mp:owned"
+   ]
+  },
+  {
+   "name": "m_unlit_multiply",
+   "sources": [
+    "retail_map:mp_shipment:owned"
+   ]
+  },
+  {
+   "name": "m_unlit_replace",
+   "sources": [
+    "retail_map:mp_crash:owned",
+    "retail_map:mp_shipment:owned"
+   ]
+  },
+  {
+   "name": "mc_ambient_t0c0",
+   "sources": [
+    "retail_map:mp_crash:owned",
+    "retail_map:mp_shipment:owned"
+   ]
+  },
+  {
+   "name": "mc_effect_falloff_add_nofog",
+   "sources": [
+    "retail_map:mp_crash:owned"
+   ]
+  },
+  {
+   "name": "mc_effect_nofog",
+   "sources": [
+    "version13_bundled_catalog",
+    "support:code_post_gfx_mp:owned",
+    "support:common_mp:referenced"
+   ]
+  },
+  {
+   "name": "mc_l_r0c0n0s0",
+   "sources": [
+    "retail_map:mp_crash:owned"
+   ]
+  },
+  {
+   "name": "mc_l_sm_b0c0",
+   "sources": [
+    "retail_map:mp_crash:referenced",
+    "retail_map:mp_shipment:referenced",
+    "support:common_mp:owned"
+   ]
+  },
+  {
+   "name": "mc_l_sm_b0c0n0",
+   "sources": [
+    "retail_map:mp_crash:referenced",
+    "retail_map:mp_shipment:referenced",
+    "support:common_mp:owned"
+   ]
+  },
+  {
+   "name": "mc_l_sm_b0c0n0s0",
+   "sources": [
+    "retail_map:mp_crash:referenced",
+    "retail_map:mp_shipment:referenced",
+    "support:common_mp:owned"
+   ]
+  },
+  {
+   "name": "mc_l_sm_b0c0s0",
+   "sources": [
+    "retail_map:mp_crash:referenced",
+    "retail_map:mp_shipment:referenced",
+    "support:common_mp:owned"
+   ]
+  },
+  {
+   "name": "mc_l_sm_flag_t0c0n0s0",
+   "sources": [
+    "support:common_mp:owned"
+   ]
+  },
+  {
+   "name": "mc_l_sm_r0c0",
+   "sources": [
+    "version13_bundled_catalog",
+    "retail_map:mp_shipment:referenced",
+    "support:code_post_gfx_mp:owned",
+    "support:common_mp:referenced"
+   ]
+  },
+  {
+   "name": "mc_l_sm_r0c0d0n0s0",
+   "sources": [
+    "retail_map:mp_crash:owned"
+   ]
+  },
+  {
+   "name": "mc_l_sm_r0c0d0s0",
+   "sources": [
+    "support:common_mp:owned"
+   ]
+  },
+  {
+   "name": "mc_l_sm_r0c0n0",
+   "sources": [
+    "retail_map:mp_crash:owned"
+   ]
+  },
+  {
+   "name": "mc_l_sm_r0c0n0s0",
+   "sources": [
+    "retail_map:mp_crash:referenced",
+    "retail_map:mp_shipment:referenced",
+    "support:common_mp:owned"
+   ]
+  },
+  {
+   "name": "mc_l_sm_r0c0s0",
+   "sources": [
+    "version13_bundled_catalog",
+    "retail_map:mp_crash:referenced",
+    "support:code_post_gfx_mp:owned",
+    "support:common_mp:referenced"
+   ]
+  },
+  {
+   "name": "mc_l_sm_t0c0n0s0",
+   "sources": [
+    "retail_map:mp_crash:owned",
+    "retail_map:mp_shipment:owned"
+   ]
+  },
+  {
+   "name": "mc_l_sm_t0c0s0",
+   "sources": [
+    "retail_map:mp_crash:referenced",
+    "support:common_mp:owned"
+   ]
+  },
+  {
+   "name": "mc_l_t0c0n0s0",
+   "sources": [
+    "retail_map:mp_crash:owned",
+    "retail_map:mp_shipment:owned"
+   ]
+  },
+  {
+   "name": "mc_unlit",
+   "sources": [
+    "retail_map:mp_crash:owned"
+   ]
+  },
+  {
+   "name": "particle_cloud",
+   "sources": [
+    "retail_map:mp_crash:referenced",
+    "retail_map:mp_shipment:referenced",
+    "support:common_mp:owned"
+   ]
+  },
+  {
+   "name": "particle_cloud_add",
+   "sources": [
+    "support:common_mp:owned"
+   ]
+  },
+  {
+   "name": "particle_cloud_outdoor",
+   "sources": [
+    "retail_map:mp_crash:referenced",
+    "retail_map:mp_shipment:referenced",
+    "support:common_mp:owned"
+   ]
+  },
+  {
+   "name": "particle_cloud_outdoor_add",
+   "sources": [
+    "support:common_mp:owned"
+   ]
+  },
+  {
+   "name": "passthru_alpha",
+   "sources": [
+    "version13_bundled_catalog"
+   ]
+  },
+  {
+   "name": "passthru_film",
+   "sources": [
+    "version13_bundled_catalog"
+   ]
+  },
+  {
+   "name": "passthru_vertalpha",
+   "sources": [
+    "version13_bundled_catalog"
+   ]
+  },
+  {
+   "name": "pixel_cost_add",
+   "sources": [
+    "version13_bundled_catalog"
+   ]
+  },
+  {
+   "name": "pixel_cost_color_code",
+   "sources": [
+    "version13_bundled_catalog"
+   ]
+  },
+  {
+   "name": "postfx",
+   "sources": [
+    "version13_bundled_catalog"
+   ]
+  },
+  {
+   "name": "postfx_color",
+   "sources": [
+    "version13_bundled_catalog"
+   ]
+  },
+  {
+   "name": "postfx_dof",
+   "sources": [
+    "version13_bundled_catalog"
+   ]
+  },
+  {
+   "name": "postfx_dof_color",
+   "sources": [
+    "version13_bundled_catalog"
+   ]
+  },
+  {
+   "name": "processed_floatz",
+   "sources": [
+    "version13_bundled_catalog"
+   ]
+  },
+  {
+   "name": "shadowcaster",
+   "sources": [
+    "version13_bundled_catalog",
+    "support:code_post_gfx_mp:owned"
+   ]
+  },
+  {
+   "name": "shadowclear",
+   "sources": [
+    "version13_bundled_catalog",
+    "support:code_post_gfx_mp:owned"
+   ]
+  },
+  {
+   "name": "shadowcookieblur",
+   "sources": [
+    "version13_bundled_catalog"
+   ]
+  },
+  {
+   "name": "shadowcookieoverlay",
+   "sources": [
+    "version13_bundled_catalog"
+   ]
+  },
+  {
+   "name": "shadowoverlay",
+   "sources": [
+    "version13_bundled_catalog"
+   ]
+  },
+  {
+   "name": "shell_shock",
+   "sources": [
+    "version13_bundled_catalog"
+   ]
+  },
+  {
+   "name": "shell_shock_flashed",
+   "sources": [
+    "version13_bundled_catalog"
+   ]
+  },
+  {
+   "name": "small_blur",
+   "sources": [
+    "version13_bundled_catalog"
+   ]
+  },
+  {
+   "name": "stencildisplay",
+   "sources": [
+    "version13_bundled_catalog"
+   ]
+  },
+  {
+   "name": "stencilshadow",
+   "sources": [
+    "version13_bundled_catalog"
+   ]
+  },
+  {
+   "name": "tools",
+   "sources": [
+    "version13_bundled_catalog",
+    "support:code_post_gfx_mp:owned",
+    "support:common_mp:referenced"
+   ]
+  },
+  {
+   "name": "unlit",
+   "sources": [
+    "support:common_mp:owned"
+   ]
+  },
+  {
+   "name": "w_l_sm_b0c0",
+   "sources": [
+    "retail_map:mp_crash:owned",
+    "retail_map:mp_shipment:owned"
+   ]
+  },
+  {
+   "name": "w_l_sm_b0c0d0n0",
+   "sources": [
+    "retail_map:mp_crash:owned"
+   ]
+  },
+  {
+   "name": "w_l_sm_b0c0n0",
+   "sources": [
+    "retail_map:mp_crash:owned",
+    "retail_map:mp_shipment:owned"
+   ]
+  },
+  {
+   "name": "w_l_sm_b0c0n0s0",
+   "sources": [
+    "retail_map:mp_crash:owned",
+    "retail_map:mp_shipment:owned"
+   ]
+  },
+  {
+   "name": "w_l_sm_b0c0s0",
+   "sources": [
+    "retail_map:mp_crash:owned"
+   ]
+  },
+  {
+   "name": "w_l_sm_r0c0",
+   "sources": [
+    "retail_map:mp_crash:owned",
+    "retail_map:mp_shipment:owned"
+   ]
+  },
+  {
+   "name": "w_l_sm_r0c0d0n0s0",
+   "sources": [
+    "retail_map:mp_crash:owned",
+    "retail_map:mp_shipment:owned"
+   ]
+  },
+  {
+   "name": "w_l_sm_r0c0n0",
+   "sources": [
+    "retail_map:mp_crash:owned"
+   ]
+  },
+  {
+   "name": "w_l_sm_r0c0n0s0",
+   "sources": [
+    "retail_map:mp_crash:owned",
+    "retail_map:mp_shipment:owned"
+   ]
+  },
+  {
+   "name": "w_l_sm_r0c0s0",
+   "sources": [
+    "retail_map:mp_crash:owned",
+    "retail_map:mp_shipment:owned"
+   ]
+  },
+  {
+   "name": "w_l_sm_t0c0n0s0",
+   "sources": [
+    "retail_map:mp_crash:owned",
+    "retail_map:mp_shipment:owned"
+   ]
+  },
+  {
+   "name": "w_sky",
+   "sources": [
+    "retail_map:mp_crash:owned",
+    "retail_map:mp_shipment:owned"
+   ]
+  },
+  {
+   "name": "w_unlit_add",
+   "sources": [
+    "retail_map:mp_shipment:owned"
+   ]
+  },
+  {
+   "name": "w_unlit_multiply",
+   "sources": [
+    "retail_map:mp_crash:owned",
+    "retail_map:mp_shipment:owned"
+   ]
+  },
+  {
+   "name": "w_water",
+   "sources": [
+    "retail_map:mp_shipment:owned"
+   ]
+  },
+  {
+   "name": "wc_l_sm_b0c0",
+   "sources": [
+    "retail_map:mp_crash:referenced",
+    "retail_map:mp_shipment:referenced",
+    "support:common_mp:owned"
+   ]
+  },
+  {
+   "name": "wc_l_sm_b0c0n0",
+   "sources": [
+    "retail_map:mp_crash:referenced",
+    "retail_map:mp_shipment:referenced",
+    "support:common_mp:owned"
+   ]
+  },
+  {
+   "name": "wc_l_sm_b0c0n0s0",
+   "sources": [
+    "retail_map:mp_crash:referenced",
+    "retail_map:mp_shipment:referenced",
+    "support:common_mp:owned"
+   ]
+  },
+  {
+   "name": "wc_l_sm_b0c0s0",
+   "sources": [
+    "retail_map:mp_crash:referenced",
+    "retail_map:mp_shipment:referenced",
+    "support:common_mp:owned"
+   ]
+  },
+  {
+   "name": "wc_l_sm_r0c0n0s0",
+   "sources": [
+    "retail_map:mp_crash:owned"
+   ]
+  },
+  {
+   "name": "wc_l_sm_t0c0n0s0",
+   "sources": [
+    "retail_map:mp_crash:owned"
+   ]
+  },
+  {
+   "name": "wc_sky",
+   "sources": [
+    "retail_map:mp_crash:owned",
+    "retail_map:mp_shipment:owned"
+   ]
+  },
+  {
+   "name": "wc_unlit_add",
+   "sources": [
+    "retail_map:mp_shipment:owned"
+   ]
+  },
+  {
+   "name": "wc_unlit_multiply",
+   "sources": [
+    "retail_map:mp_crash:owned"
+   ]
+  }
+ ]
+}

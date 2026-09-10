@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../../src/IW3MapPorter.Core/IW3MapPorter.Core.csproj" /></ItemGroup>
+</Project>

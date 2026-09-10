@@ -1,0 +1,26 @@
+{
+  "map": "mp_getaway",
+  "binding": false,
+  "description": "Historical diagnostic fingerprint from the original PC mp_getaway conversion logs. Never used to synthesize data or accept a conversion.",
+  "source": {
+    "xassets": 767,
+    "script_strings": 469,
+    "iwd_images": 735,
+    "iwd_audio": 17,
+    "rawfiles": 7,
+    "sound_lists": 160,
+    "xmodels": 333,
+    "xsurfaces": 1314,
+    "xmodel_vertices": 561815,
+    "xmodel_triangles": 543202,
+    "materials_unique": 481,
+    "gfxworld_surfaces": 4183,
+    "gfxworld_vertices": 133901,
+    "gfxworld_indices": 279741,
+    "gfxworld_cells": 1,
+    "clipmap_planes": 4304,
+    "clipmap_static_models": 3449,
+    "clipmap_brushes": 6639,
+    "clipmap_triangles": 18708
+  }
+}

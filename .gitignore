@@ -1,0 +1,23 @@
+.vs/
+**/bin/
+**/obj/
+**/__pycache__/
+*.pyc
+*.pyo
+*.user
+*.suo
+artifacts/
+
+# Local environments and generated reports
+.venv/
+venv/
+.pytest_cache/
+*.log
+*.tmp
+*.bak
+output/
+FILE_SHA256.json
+
+# Local game fixtures
+backend/reference/original_pc/
+backend/reference/legacy/

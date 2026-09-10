@@ -1,0 +1,170 @@
+<Window x:Class="IW3MapPorter.Desktop.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:core="clr-namespace:IW3MapPorter.Core;assembly=IW3MapPorter.Core"
+        Style="{StaticResource AppWindowStyle}" Background="{StaticResource Canvas}" Foreground="{StaticResource Ink}" Icon="Assets/IW3MapPorter.ico" Title="{x:Static core:VersionInfo.WindowTitle}" Width="1380" Height="920" MinWidth="1040" MinHeight="700" Closing="OnClosing" AllowDrop="True" PreviewDragOver="OnDragOver" PreviewDrop="OnDrop">
+  <DockPanel Background="{StaticResource Canvas}">
+    <Border DockPanel.Dock="Top" Background="{StaticResource Canvas}" BorderBrush="{StaticResource Stroke}" BorderThickness="0,0,0,1" Padding="26,18">
+      <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+        <StackPanel Orientation="Horizontal">
+          <Image Source="Assets/IW3MapPorter.ico" Width="38" Height="38" Margin="0,0,14,0" RenderOptions.BitmapScalingMode="HighQuality"/>
+          <StackPanel VerticalAlignment="Center"><TextBlock Text="IW3 Map Porter" FontSize="20" FontWeight="SemiBold"/><TextBlock Text="PC to PlayStation 3" Foreground="{StaticResource Muted}" FontSize="11" Margin="0,3,0,0"/></StackPanel>
+          <Border Background="{StaticResource Raised}" CornerRadius="5" VerticalAlignment="Center" Margin="18,0,0,0" Padding="8,4"><TextBlock Text="{x:Static core:VersionInfo.Label}" FontSize="11" Foreground="{StaticResource Muted}"/></Border>
+        </StackPanel>
+        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+          <Button Content="Open profile" Click="LoadProfile"/><Button Content="Save profile" Click="SaveProfile"/><Button Content="Run folder" Click="OpenJob"/>
+        </StackPanel>
+      </Grid>
+    </Border>
+    <Border DockPanel.Dock="Bottom" Background="{StaticResource Surface}" Padding="24,12" BorderBrush="{StaticResource Stroke}" BorderThickness="0,1,0,0">
+      <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="150"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+        <StackPanel><DockPanel><Ellipse x:Name="StatusIndicator" Width="7" Height="7" Fill="{StaticResource Muted}" Margin="0,0,10,0"/><TextBlock x:Name="StatusText" Text="Ready. Select a PC main fastfile or drop it here." FontWeight="SemiBold" TextWrapping="Wrap"/></DockPanel><ProgressBar x:Name="BusyBar" Height="4" Margin="0,7,18,0" Visibility="Collapsed" IsIndeterminate="True"/></StackPanel>
+        <TextBlock Grid.Column="1" x:Name="ElapsedText" Text="00:00:00" VerticalAlignment="Center" HorizontalAlignment="Center" FontFamily="Consolas"/>
+        <Button Grid.Column="2" x:Name="CancelButton" Content="Cancel" Click="CancelJob" IsEnabled="False"/>
+      </Grid>
+    </Border>
+    <Grid Margin="0"><Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="6"/><RowDefinition Height="170" MinHeight="80"/></Grid.RowDefinitions>
+      <TabControl x:Name="MainTabs">
+        <TabItem><TabItem.Header><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE8B5;" FontFamily="Segoe MDL2 Assets" Margin="0,0,11,0" VerticalAlignment="Center"/><TextBlock Text="Port"/></StackPanel></TabItem.Header>
+          <ScrollViewer VerticalScrollBarVisibility="Auto"><Grid x:Name="PortInputs" Margin="18"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="20"/><ColumnDefinition/></Grid.ColumnDefinitions><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/></Grid.RowDefinitions><StackPanel Grid.ColumnSpan="3" Margin="0,4,0,20"><TextBlock Text="Convert your map" FontSize="25" FontWeight="SemiBold"/><TextBlock Text="Choose source files, configure references and build PS3 fastfiles." Style="{StaticResource Hint}"/></StackPanel>
+            <StackPanel Grid.Row="1">
+              <GroupBox Header="01 / PC source files"><StackPanel>
+                <TextBlock Text="Main fastfile (.ff)"/><DockPanel><Button DockPanel.Dock="Right" Content="Browse…" Click="BrowseMain"/><TextBox x:Name="PcFfBox" Text="{Binding PcFf}" ToolTip="Main fastfile, not _load.ff"/></DockPanel>
+                <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBox Text="{Binding MapName}" ToolTip="Map name: mp_…"/><Button Grid.Column="1" Content="Detect companion files" Click="DetectFiles"/></Grid>
+                <TextBlock Text="PC loading zone (_load.ff)"/><DockPanel><Button DockPanel.Dock="Right" Content="…" Tag="PcLoadFf" Click="BrowseFile"/><TextBox Text="{Binding PcLoadFf}"/></DockPanel>
+                <CheckBox Content="Build main + _load.ff as a complete pair" IsChecked="{Binding RequireLoadFile}"/>
+                <TextBlock Text="IWD archives (input only)"/><ListBox x:Name="IwdList" Height="100"/>
+                <WrapPanel><Button Content="Add IWD…" Click="AddIwd"/><Button Content="Remove" Click="RemoveIwd"/></WrapPanel>
+                <TextBlock Text="PC texture library (optional main folder)"/>
+                <DockPanel><Button DockPanel.Dock="Right" Content="…" Tag="TextureLibraryDirectory" Click="BrowseFolder"/><TextBox Text="{Binding TextureLibraryDirectory}"/></DockPanel>
+                <TextBlock Style="{StaticResource Hint}" Text="Select your PC CoD4 main folder to resolve stock textures. Only images referenced by this map are added. Used by conversion and the 3D preview; rebuild fastfiles to apply to PS3."/>
+              </StackPanel></GroupBox>
+              <GroupBox Header="02 / Output"><StackPanel>
+                <DockPanel><Button DockPanel.Dock="Right" Content="…" Tag="OutputRoot" Click="BrowseFolder"/><TextBox Text="{Binding OutputRoot}"/></DockPanel>
+                <TextBlock Style="{StaticResource Hint}" Text="Each job has its own timestamped subfolder. Fastfiles, reports and logs are kept together."/>
+                <WrapPanel><Button Style="{StaticResource PrimaryButton}" Content="Port &amp; verify" Tag="port" Click="StartJob"/><Button Content="Analyze sources" Tag="analyze" Click="StartJob"/></WrapPanel>
+              </StackPanel></GroupBox>
+            </StackPanel>
+            <StackPanel Grid.Column="2" Grid.Row="1">
+              <GroupBox Header="03 / PS3 references"><StackPanel>
+                <TextBlock Text="PS3 _load.ff reference (optional)"/><DockPanel><Button DockPanel.Dock="Right" Content="…" Tag="Ps3LoadReference" Click="BrowseFile"/><TextBox Text="{Binding Ps3LoadReference}"/></DockPanel>
+                <TextBlock Style="{StaticResource Hint}" Text="Provides verified retail pixels for the victory screen. A missing reference is recorded as a limitation in the report."/>
+                <TextBlock Text="Always-loaded PS3 zones for preflight"/><ListBox x:Name="SupportList" Height="100"/>
+                <WrapPanel><Button Content="Add support zones…" Click="AddSupport"/><Button Content="Remove" Click="RemoveSupport"/></WrapPanel>
+              </StackPanel></GroupBox>
+              <GroupBox Header="04 / Verify existing output"><StackPanel>
+                <TextBlock Text="*.python-port-report.json"/><DockPanel><Button DockPanel.Dock="Right" Content="…" Tag="ReportPath" Click="BrowseFile"/><TextBox Text="{Binding ReportPath}"/></DockPanel>
+                <Button Content="Run audit + preflight" Tag="verify" Click="StartJob" HorizontalAlignment="Left"/>
+              </StackPanel></GroupBox>
+              <Border Padding="18" Background="{StaticResource AccentSurface}" BorderBrush="#28463C" BorderThickness="1" CornerRadius="10"><StackPanel><TextBlock Text="Map conversion" FontWeight="SemiBold"/><TextBlock Style="{StaticResource Hint}" Text="Map-specific sounds are omitted. No output IWD/PAK is generated. Passing software checks does not confirm successful loading on PS3 hardware."/></StackPanel></Border>
+            </StackPanel>
+          </Grid></ScrollViewer>
+        </TabItem>
+        <TabItem><TabItem.Header><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE950;" FontFamily="Segoe MDL2 Assets" Margin="0,0,11,0" VerticalAlignment="Center"/><TextBlock Text="Emulator &amp; Linker"/></StackPanel></TabItem.Header><ScrollViewer VerticalScrollBarVisibility="Auto"><Grid x:Name="EmuInputs" Margin="18"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="20"/><ColumnDefinition/></Grid.ColumnDefinitions><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/></Grid.RowDefinitions><StackPanel Grid.ColumnSpan="3" Margin="0,4,0,20"><TextBlock Text="Emulator &amp; linker" FontSize="25" FontWeight="SemiBold"/><TextBlock Text="Load a zone, inspect its assets and explore the linked world." Style="{StaticResource Hint}"/></StackPanel>
+          <StackPanel Grid.Row="1"><GroupBox Header="Loader and engine DB linking"><StackPanel>
+            <TextBlock Text="Generated PS3 main fastfile (.ff) or decompressed zone (.bin)"/><DockPanel><Button DockPanel.Dock="Right" Content="…" Tag="Ps3Ff" Click="BrowseFile"/><TextBox Text="{Binding Ps3Ff}"/></DockPanel>
+            <TextBlock Text="PS3 loading companion (optional; detected beside the main .ff)"/><DockPanel><Button DockPanel.Dock="Right" Content="…" Tag="Ps3LoadFf" Click="BrowseFile"/><TextBox Text="{Binding Ps3LoadFf}"/></DockPanel>
+            <TextBlock Text="Map name for engine lookups"/><TextBox Text="{Binding MapName}"/>
+            <TextBlock Text="Decrypted CoD4 EBOOT (.elf)"/><DockPanel><Button DockPanel.Dock="Right" Content="…" Tag="ElfPath" Click="BrowseFile"/><TextBox Text="{Binding ElfPath}"/></DockPanel>
+            <TextBlock Text="Folder containing code_post_gfx_mp.ff, ui_mp.ff and common_mp.ff"/><DockPanel><Button DockPanel.Dock="Right" Content="…" Tag="SupportDirectory" Click="BrowseFolder"/><TextBox Text="{Binding SupportDirectory}"/></DockPanel>
+            <TextBlock Style="{StaticResource Hint}" Text="Alternatively, use zone_*.bin files. Support snapshots are cached by ELF and zone contents. The first run can take several minutes."/>
+            <CheckBox Content="Rebuild linked scene (ignore saved scene cache)" IsChecked="{Binding ForceSceneRebuild}"/><WrapPanel><Button Content="Check loader only" Tag="emulate" Click="StartJob"/><Button Content="Link &amp; open 3D" Style="{StaticResource PrimaryButton}" Tag="link" Click="StartJob"/></WrapPanel>
+          </StackPanel></GroupBox></StackPanel>
+          <StackPanel Grid.Column="2" Grid.Row="1"><GroupBox Header="Open an existing world dump"><StackPanel>
+            <TextBlock Text="*.world.npz (keep the matching .meta file alongside it)"/><DockPanel><Button DockPanel.Dock="Right" Content="…" Tag="WorldDump" Click="BrowseFile"/><TextBox Text="{Binding WorldDump}"/></DockPanel>
+            <Button Content="Open world dump in 3D" Tag="preview" Click="StartJob" HorizontalAlignment="Left"/>
+            <Button Content="Open saved desktop scene…" Click="OpenScene" HorizontalAlignment="Left"/>
+          </StackPanel></GroupBox>
+          <GroupBox Header="RSX / IW4Studio"><StackPanel>
+            <WrapPanel><Button Content="Inspect vertex shader…" Tag="vertex" Click="InspectShader"/><Button Content="Inspect fragment shader…" Tag="fragment" Click="InspectShader"/></WrapPanel>
+            <TextBlock Style="{StaticResource Hint}" Text="Original IW4Studio RSX instruction decoder integrated with .NET 9. Requires a Cg program with an upload header. Decoding does not execute IW3 shader bindings."/>
+          </StackPanel></GroupBox>
+          <GroupBox Header="About this preview"><StackPanel><TextBlock Style="{StaticResource Hint}" Text="The 3D preview reads GfxWorld, static XModels and MapEnts from linked memory. Model surfaces retain their materials and UVs. IWD files selected in Port can supply missing diffuse previews."/><TextBlock Style="{StaticResource Hint}" Text="The loader uses the fixed CoD4 EBOOT address profile included with this version. Game code and retail zones are not included. Each scene report lists supported material/RSX features and remaining differences."/></StackPanel></GroupBox>
+          </StackPanel>
+        </Grid></ScrollViewer></TabItem>
+        <TabItem x:Name="SceneTab"><TabItem.Header><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE809;" FontFamily="Segoe MDL2 Assets" Margin="0,0,11,0" VerticalAlignment="Center"/><TextBlock Text="3D / MapEnts"/></StackPanel></TabItem.Header><Grid Margin="12"><Grid.ColumnDefinitions><ColumnDefinition Width="320"/><ColumnDefinition Width="8"/><ColumnDefinition/></Grid.ColumnDefinitions>
+          <DockPanel><StackPanel DockPanel.Dock="Top"><TextBlock Text="MapEnts" FontWeight="SemiBold" FontSize="18"/><TextBox x:Name="EntitySearch" ToolTip="Search classname, targetname or entity ID" TextChanged="FilterEntities"/><CheckBox x:Name="SpawnFilter" Content="Spawns only" Checked="FilterEntities" Unchecked="FilterEntities"/><CheckBox x:Name="PositionFilter" Content="Entities with a position only" IsChecked="True" Checked="FilterEntities" Unchecked="FilterEntities"/></StackPanel>
+            <StackPanel DockPanel.Dock="Bottom"><WrapPanel><Button Content="← Previous" Click="PreviousEntity"/><Button Content="Next →" Click="NextEntity"/></WrapPanel><TextBlock x:Name="EntityCountText" Style="{StaticResource Hint}"/><TextBox x:Name="EntityDetails" IsReadOnly="True" Height="145" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="11"/></StackPanel>
+            <ListBox x:Name="EntityList" DisplayMemberPath="Label" SelectionChanged="EntitySelected" ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
+          </DockPanel>
+          <Grid Grid.Column="2"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+            <WrapPanel><Button Content="Go to entity" Click="JumpToEntity"/><Button Content="Overview" Click="Overview"/><Button Content="−45°" Tag="-45" Click="RotateCamera"/><Button Content="+45°" Tag="45" Click="RotateCamera"/><TextBlock Text="Eye height" VerticalAlignment="Center" Margin="12,0,5,0"/><TextBox x:Name="EyeHeightBox" Text="60" Width="62"/><TextBlock x:Name="SceneStats" VerticalAlignment="Center" Margin="10,0,0,0"/></WrapPanel>
+            <Border Grid.Row="1" Background="#080A0B" BorderBrush="{StaticResource Stroke}" BorderThickness="1" CornerRadius="8" Focusable="True" x:Name="ViewportHost" MouseLeftButtonDown="ViewportDown" MouseLeftButtonUp="ViewportUp" MouseMove="ViewportMove" MouseWheel="ViewportWheel" KeyDown="ViewportKey">
+              <Viewport3D x:Name="Viewport"><Viewport3D.Camera><PerspectiveCamera x:Name="Camera" Position="100,-100,100" LookDirection="-100,100,-100" UpDirection="0,0,1" FieldOfView="80" NearPlaneDistance="0.5" FarPlaneDistance="200000"/></Viewport3D.Camera></Viewport3D>
+            </Border>
+            <StackPanel Grid.Row="2"><TextBlock x:Name="SceneNotice" Style="{StaticResource Hint}" Text="No map loaded yet."/><TextBlock Style="{StaticResource Hint}" Text="Drag: look around · Wheel: forward/back · W/A/S/D: move · Q/E: up/down · Shift: faster · Home: selected entity"/></StackPanel>
+          </Grid>
+        </Grid></TabItem>
+
+        <TabItem x:Name="MapMenuTab"><TabItem.Header><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE8A5;" FontFamily="Segoe MDL2 Assets" Margin="0,0,11,0"/><TextBlock Text="Map Menu Editor"/></StackPanel></TabItem.Header>
+          <ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel x:Name="MapMenuInputs" Margin="22">
+            <TextBlock Text="Map Menu Editor" FontSize="25" FontWeight="SemiBold"/>
+            <TextBlock Text="Keep the stock maps, add custom choices, pictures and descriptions." Style="{StaticResource Hint}"/>
+            <GroupBox Header="01 / Open a PS3 UI FastFile"><StackPanel>
+              <DockPanel><Button DockPanel.Dock="Right" Content="Browse…" Tag="MapMenuFf" Click="BrowseFile"/><TextBox Text="{Binding MapMenuFf}"/></DockPanel>
+              <TextBlock Text="Original UI (needed for older exports only)" Style="{StaticResource Hint}"/><DockPanel><Button DockPanel.Dock="Right" Content="Browse…" Tag="MapMenuOriginalFf" Click="BrowseFile"/><TextBox Text="{Binding MapMenuOriginalFf}"/></DockPanel>
+              <WrapPanel><Button Content="Inspect / reload slots" Tag="mapmenu-inspect" Click="RunMapMenuJob"/></WrapPanel>
+              <TextBlock Text="Open the original UI or an exported UI. Older exports need the untouched original below once. Reloading discards unsaved edits." Style="{StaticResource Hint}"/>
+            </StackPanel></GroupBox>
+            <GroupBox Header="02 / Edit map choices"><StackPanel>
+              <WrapPanel><Button Content="+ Add map" Click="AddMapMenuEntry"/><Button Content="Remove custom row" Click="RemoveMapMenuEntry"/><Button Content="Set loading picture…" Click="SetMapMenuLoadingPicture"/></WrapPanel>
+              <TextBlock x:Name="MapMenuNotice" Text="Open ui_mp.ff: the verified reference and supplied BLUS-30072 layouts are detected automatically. Other revisions need a matching profile." Style="{StaticResource Hint}"/>
+              <DataGrid x:Name="MapMenuGrid" Height="340" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" HeadersVisibility="Column" GridLinesVisibility="Horizontal" Background="#000000" Foreground="#E6E6E6" RowBackground="#101213" AlternatingRowBackground="#181B1D" BorderBrush="#303638" HorizontalGridLinesBrush="#303638" SelectionUnit="FullRow">
+                <DataGrid.Resources><Style TargetType="DataGridColumnHeader"><Setter Property="Background" Value="#1B1F21"/><Setter Property="Foreground" Value="#E6E6E6"/><Setter Property="Padding" Value="8"/></Style></DataGrid.Resources>
+                <DataGrid.Columns>
+                  <DataGridTextColumn Header="Slot" Binding="{Binding Slot}" IsReadOnly="True" Width="50"/>
+                  <DataGridTextColumn Header="Original slot" Binding="{Binding StockMap}" IsReadOnly="True" Width="150"/>
+                  <DataGridTextColumn Header="Map ID" Binding="{Binding MapId, UpdateSourceTrigger=PropertyChanged}" Width="*"/>
+                  <DataGridTextColumn Header="Display name" Binding="{Binding DisplayName, UpdateSourceTrigger=PropertyChanged}" Width="*"/>
+                  <DataGridTextColumn Header="Ported PS3 _load.ff" Binding="{Binding PreviewLoadFf}" IsReadOnly="True" Width="200"/>
+                </DataGrid.Columns>
+              </DataGrid>
+              <Image Source="{Binding SelectedItem.PreviewImagePath, ElementName=MapMenuGrid}" Stretch="Uniform" MaxWidth="300" MaxHeight="180" HorizontalAlignment="Left" Margin="0,10,0,0"/>
+              <TextBlock Text="Set loading picture accepts the ported PS3 _load.ff. The image is extracted and fitted automatically (up to 512 px); export embeds it in ui_mp.ff for the lobby and map selector." Style="{StaticResource Hint}"/>
+              <TextBlock Text="Description for the selected map" Margin="0,12,0,4"/>
+              <TextBox Text="{Binding SelectedItem.Description, ElementName=MapMenuGrid, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" MaxLength="160" MinHeight="88" VerticalScrollBarVisibility="Auto"/>
+              <TextBlock Text="Up to 160 plain English characters, wrapped into four lines. Leave stock descriptions empty to keep their original text." Style="{StaticResource Hint}"/>
+              <TextBlock Text="Ported by 01cedric's IW3MapPorter" Foreground="#E6E6E6" Margin="0,8,0,4"/>
+              <TextBlock Text="This fixed credit appears below custom descriptions in the game and cannot be edited in the tool." Style="{StaticResource Hint}"/>
+              <TextBlock Text="Example: mp_nuked → Nuketown. Keep @MPUI_ keys for unchanged stock rows. Custom names support 64 English characters, with smaller text for long names. Add up to 16 custom maps below the original 16. Added rows appear inside the yellow Custom Maps submenu; stock rows remain in the main selector. Assign the converted PS3 _load.ff to each custom map to embed its lobby and map-selection picture." Style="{StaticResource Hint}"/>
+            </StackPanel></GroupBox>
+            <GroupBox Header="03 / Export"><StackPanel>
+              <WrapPanel><Button Content="Export modified ui_mp.ff" Tag="mapmenu-write" Click="RunMapMenuJob"/><Button Content="Open run folder" Click="OpenJob"/></WrapPanel>
+              <TextBlock Text="Writes a separate ui_mp.ff in the run folder. Keep a backup before installing it in your game's normal FastFile location, alongside the converted map pair. No runtime map-list JSON or EBOOT patch is used. Allocations, item arrays, block sizes and packed pointers are rebuilt. The main selector keeps 16 stock rows and opens a separate Custom Maps list with up to 16 added maps. Online private custom maps use direct startup. Local menus retain native StartServer and include startup diagnostics. Local lobby pictures use the embedded loading images. The user confirmed the 22.1.13 startup fix. This new submenu and party synchronization still need PS3 testing." Style="{StaticResource Hint}"/>
+            </StackPanel></GroupBox>
+          </StackPanel></ScrollViewer>
+        </TabItem>
+
+        <TabItem><TabItem.Header><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" Margin="0,0,11,0" VerticalAlignment="Center"/><TextBlock Text="Options"/></StackPanel></TabItem.Header><ScrollViewer VerticalScrollBarVisibility="Auto"><Grid x:Name="OptionInputs" Margin="18"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="20"/><ColumnDefinition/></Grid.ColumnDefinitions><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/></Grid.RowDefinitions><StackPanel Grid.ColumnSpan="3" Margin="0,4,0,20"><TextBlock Text="Conversion options" FontSize="25" FontWeight="SemiBold"/><TextBlock Text="Control resource policies, texture limits and diagnostics." Style="{StaticResource Hint}"/></StackPanel>
+          <StackPanel Grid.Row="1"><GroupBox Header="Conversion profile"><StackPanel>
+            <CheckBox Content="Allow runtime-compatible fallbacks (listed in the report)" IsChecked="{Binding RuntimeCompatible}"/><CheckBox Content="Require full fidelity as an additional completion condition" IsChecked="{Binding RequireFullFidelity}"/>
+            <TextBlock Text="GfxWorld image resources"/><ComboBox x:Name="GfxPolicy" SelectedItem="{Binding GfxworldResourcePolicy}"/>
+            <TextBlock Text="Material image resources"/><ComboBox x:Name="MaterialPolicy" SelectedItem="{Binding MaterialImageResourcePolicy}"/>
+            <TextBlock Text="Missing images"/><ComboBox x:Name="ImageFallback" SelectedItem="{Binding UnresolvedImagePolicy}"/>
+            <TextBlock Text="Missing materials"/><ComboBox x:Name="MaterialFallback" SelectedItem="{Binding UnresolvedMaterialPolicy}"/>
+            <TextBlock Text="Primary Lights"/><ComboBox x:Name="LightPolicy" SelectedItem="{Binding PrimaryLightPolicy}"/>
+          </StackPanel></GroupBox><GroupBox Header="Diagnostic options"><StackPanel>
+            <CheckBox Content="Boot isolation: replace the visual graph" IsChecked="{Binding BootIsolation}"/>
+            <TextBlock Text="Vertex layers"/><ComboBox x:Name="LayerPolicy" SelectedItem="{Binding VertexLayerPolicy}"/><TextBlock Text="Portals"/><ComboBox x:Name="PortalPolicy" SelectedItem="{Binding PortalPolicy}"/>
+            <TextBlock Style="{StaticResource Hint}" Text="omit and boot isolation change the map appearance. These diagnostic options are recorded in the report."/>
+          </StackPanel></GroupBox></StackPanel>
+          <StackPanel Grid.Column="2" Grid.Row="1"><GroupBox Header="Textures and PS3 zone budget"><StackPanel>
+            <CheckBox x:Name="AutomaticZoneBudgetCheck" Content="Choose PS3 zone budget automatically" IsChecked="{Binding AutomaticZoneBudget}"/>
+            <TextBlock Text="Manual zone budget in bytes (or off)"/>
+            <TextBox Text="{Binding ZoneBudgetBytes}"><TextBox.Style><Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}"><Style.Triggers><DataTrigger Binding="{Binding IsChecked, ElementName=AutomaticZoneBudgetCheck}" Value="True"><Setter Property="IsEnabled" Value="False"/></DataTrigger></Style.Triggers></Style></TextBox.Style></TextBox>
+            <TextBlock Text="Maximum texture edge (0 = no fixed limit)"/><TextBox Text="{Binding TextureMaxEdge, ValidatesOnExceptions=True}"/>
+            <TextBlock Text="Minimum edge for budget reduction"/><TextBox Text="{Binding ImageBudgetMinDimension, ValidatesOnExceptions=True}"/>
+            <TextBlock Style="{StaticResource Hint}" Text="Automatic budgeting is enabled by default. Textures keep their resolution when the map fits; otherwise selected textures lose whole top mip levels. The current profile allows 132274041 bytes. This is a measured retail reference, not a guarantee of available console memory. Disable automatic budgeting to use the manual value."/>
+          </StackPanel></GroupBox><GroupBox Header="Additional settings"><StackPanel>
+            <TextBlock Text="Cubemap evidence JSON (optional)"/><DockPanel><Button DockPanel.Dock="Right" Content="…" Tag="CubemapEvidence" Click="BrowseFile"/><TextBox Text="{Binding CubemapEvidence}"/></DockPanel>
+            <TextBlock Text="Custom Python executable (blank = bundled runtime)"/><DockPanel><Button DockPanel.Dock="Right" Content="…" Tag="PythonPath" Click="BrowseFile"/><TextBox Text="{Binding PythonPath}"/></DockPanel>
+            <WrapPanel><Button Content="Check environment" Tag="doctor" Click="StartJob"/><Button Content="Porter self-tests" Tag="tests" Click="StartJob"/></WrapPanel>
+          </StackPanel></GroupBox></StackPanel>
+        </Grid></ScrollViewer></TabItem>
+        <TabItem x:Name="ResultsTab"><TabItem.Header><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE9D5;" FontFamily="Segoe MDL2 Assets" Margin="0,0,11,0" VerticalAlignment="Center"/><TextBlock Text="Results"/></StackPanel></TabItem.Header><Grid Margin="12"><Grid.ColumnDefinitions><ColumnDefinition Width="330"/><ColumnDefinition Width="10"/><ColumnDefinition/></Grid.ColumnDefinitions>
+          <DockPanel><WrapPanel DockPanel.Dock="Bottom"><Button Content="Open file" Click="OpenArtifact"/><Button Content="Open folder" Click="OpenArtifactFolder"/></WrapPanel><ListBox x:Name="ArtifactList" DisplayMemberPath="Label" SelectionChanged="ArtifactSelected"/></DockPanel>
+          <TextBox Grid.Column="2" x:Name="ReportText" IsReadOnly="True" FontFamily="Consolas" FontSize="12" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" Text="Reports and verification details appear here."/>
+        </Grid></TabItem>
+      </TabControl>
+      <GridSplitter Grid.Row="1" Height="6" HorizontalAlignment="Stretch" Background="{StaticResource Stroke}"/>
+      <DockPanel Grid.Row="2" Background="{StaticResource Canvas}" Margin="24,8,24,10"><StackPanel DockPanel.Dock="Top" Orientation="Horizontal"><TextBlock Text="LIVE LOG" Foreground="{StaticResource Ink}" FontWeight="SemiBold" Margin="10,6,15,6"/><Button Content="Copy log" Click="CopyLog" Padding="8,2" MinHeight="20" Margin="0,2,5,2"/><Button Content="Clear log" Click="ClearLog" Padding="8,2" MinHeight="20" Margin="0,2,5,2"/></StackPanel><TextBox x:Name="LogBox" IsReadOnly="True" Background="{StaticResource Canvas}" Foreground="{StaticResource Muted}" BorderThickness="0" Margin="0" FontFamily="Consolas" FontSize="12" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"/></DockPanel>
+    </Grid>
+  </DockPanel>
+</Window>

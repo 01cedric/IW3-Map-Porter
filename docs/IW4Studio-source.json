@@ -1,0 +1,19 @@
+{
+  "repository": "https://github.com/jacob-schroeder/IW4Studio",
+  "commit": "a40c917e6f46553f419b01d7c7ed5a3a5a875b07",
+  "license": "MIT",
+  "files": {
+    "src/IW4.Render/Shaders/RsxProgramDecoder.cs": "892c2b3422d278d0d5473f7e57241318db5710e877c2a5b50d8b5392b596d73c",
+    "src/IW4.Render/Shaders/RsxVertexProgramIr.cs": "01231771364f6a84f95fef0500dd7c68d9d09516acbdd336cd54d5722a2b5706",
+    "src/IW4.Render/Shaders/RsxShaderInstructionSet.cs": "b733d8cef8e858137194ffa2ee9f374706c3a9189f3dd83fd653f63af0f69846",
+    "src/IW4.Assets/Math/PackedSigned11_11_10.cs": "1325f00dd011912b09c63fffe420267a890be94725fc4c57ea0c27fa0238eaea",
+    "src/IW4.Assets/Assets/Image/GfxImageTextureRemap.cs": "447cc97cf12fd8a480287850d918f8fe04d2621e1f8e1bd1e51861abaffd66c5",
+    "src/IW4.Assets/Assets/Image/GfxImageFormat.cs": "e4738c8449b2685dcfb16c3a598353cd7276cc524b2546d2ad1015378cd2f6b3",
+    "src/IW4.Render/Textures/RsxTextureSwizzle.cs": "9bc4788a0654be55350b034eca9198d046685da67d97cce534bbf114faedf77e"
+  },
+  "adaptations": [
+    "Instruction types extracted without IW4 runtime binding dependencies.",
+    "Texture remap calculation also adapted to Python for BC and linear ARGB8 texture previews."
+  ],
+  "credit": "jakes625 (Jacob Schroeder)"
+}

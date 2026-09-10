@@ -1,0 +1,12 @@
+* text=auto
+*.py text eol=lf
+*.cs text eol=lf
+*.xaml text eol=lf
+*.md text eol=lf
+*.ps1 text eol=crlf
+*.dll binary
+*.exe binary
+*.pyd binary
+*.zip binary
+*.ico binary
+*.zlib binary
