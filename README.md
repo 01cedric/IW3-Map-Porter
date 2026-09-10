@@ -52,7 +52,7 @@ guarantee that every map starts or renders correctly on a console.
 |-|-|
 |BLES-00149|✅ works|
 |BLUS-30072|✅ works|
-|BLES-00115, BLES-00148, BLES-00149, BLES-00154, BLES-00155, BLES-00156|⚠️ IDs are catalogued, but individual revisions have not all been validated. Only a matching captured UI is editable.|
+|BLES-00115, BLES-00148, BLES-00154, BLES-00155, BLES-00156|⚠️ IDs are catalogued, but individual revisions have not all been validated. Only a matching captured UI is editable.|
 |Other BLES / BLUS UI revisions|❌ No editing support unless their UI matches an existing profile. Map compatibility is unverified.|
 |BLJS-10031 / BLJM-60173|❌ No dedicated UI editing profiles; map compatibility is unverified.|
 |Disc executables / update 1.40|⚠️ Metadata inspection is available; universal loader compatibility is not implemented.|
