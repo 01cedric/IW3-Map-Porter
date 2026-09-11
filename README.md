@@ -46,7 +46,6 @@ See [reader coverage](backend/tools/iw3_pc_reader/README.md) for tested scope.
 | ✅ | Online private-match startup fix, confirmed on the tested BLES setup. |
 | ✅ | General PC → RSX shader compilation with retail donor transplants and layout calibration. |
 | ✅ | Owned LocalizeEntry serialization: MPUI/script strings resolve on any regional installation. |
-| ✅ | 3D preview executes RSX fragment programs in software and plays deterministic FX particle simulations. |
 | ⚠️ | 3D map/model previews, MapEnts editing and loader/linker tools; vertex-program animation shows its t=0 state. |
 | ⚠️ | Exact reference/BLES and BLUS-30072 UI profiles; other revisions need matching profiles. |
 
