@@ -43,7 +43,6 @@ See [reader coverage](backend/tools/iw3_pc_reader/README.md) for tested scope.
 | ✅ | FastFile readback, structural checks and diagnostic reports. |
 | ✅ | Yellow Custom Maps submenu with names, descriptions and pictures. |
 | ✅ | Up to 16 custom maps alongside the 16 stock maps; exported UIs can be reopened. |
-| ✅ | Online private-match startup fix, confirmed on the tested BLES setup. |
 | ✅ | General PC → RSX shader compilation with retail donor transplants and layout calibration. |
 | ✅ | Owned LocalizeEntry serialization: MPUI/script strings resolve on any regional installation. |
 | ⚠️ | 3D map/model previews, MapEnts editing and loader/linker tools; vertex-program animation shows its t=0 state. |
