@@ -21,9 +21,33 @@ sys.path.insert(0, str(ROOT))
 WIRE = sys.stdout
 
 
+LAST_STAGE = ''
+
 def emit(kind, message='', **values):
+    global LAST_STAGE
+    if kind == 'stage':
+        LAST_STAGE = str(message)
     WIRE.write(json.dumps(dict(type=kind, message=message, **values), ensure_ascii=True, default=str) + '\n')
     WIRE.flush()
+
+
+def write_autopsy(exc, request):
+    """Self-diagnose a failed job: classification, action and porter frames."""
+    try:
+        from error_autopsy import build_autopsy
+        settings = (request or {}).get('settings', {}) if isinstance(request, dict) else {}
+        autopsy = build_autopsy(
+            exc, command=str((request or {}).get('command', '')), version=VERSION,
+            map_name=str(settings.get('map_name', '')), stage=LAST_STAGE)
+        row = autopsy['classification']
+        emit('log', 'Failure class: %s. %s %s' % (row['class'], row['meaning'], row['action']))
+        out = Path(request['output_dir']) if isinstance(request, dict) and request.get('output_dir') else None
+        if out is not None and out.is_dir():
+            target = out / 'error-autopsy.json'
+            target.write_text(json.dumps(autopsy, indent=2) + '\n', encoding='utf-8')
+            artifact(target, 'diagnostic')
+    except Exception as autopsy_error:  # diagnosis must never mask the real failure
+        emit('log', 'Autopsy unavailable: %s' % autopsy_error)
 
 
 class LogStream(io.TextIOBase):
@@ -82,6 +106,8 @@ def common_options(s):
         'primary_light_policy': ('source', 'sun-only'),
         'vertex_layer_policy': ('source', 'omit'),
         'portal_policy': ('source', 'omit'),
+        'unsupported_fx_policy': ('omit', 'error'),
+        'shader_compilation': ('auto', 'prefer', 'off'),
     }
     options = {}
     for key, allowed in choices.items():
@@ -89,6 +115,7 @@ def common_options(s):
         if value not in allowed: raise ValueError('Invalid option: ' + key)
         options[key] = value
     options['texture_library_directory']=s.get('texture_library_directory') or None
+    options['donor_catalog']=s.get('donor_catalog') or None
     options.update(runtime_compatible=bool(s.get('runtime_compatible', True)),
                    boot_isolation=bool(s.get('boot_isolation', False)), sound_policy='omit')
     return options
@@ -259,16 +286,17 @@ def run(request):
     if command in ('mapmenu-inspect', 'mapmenu-write'):
         from gui_mapmenu import execute
         return execute(command, s, out, emit, artifact)
-    if command in ('emulate', 'link', 'preview'):
+    if command in ('emulate', 'link', 'preview', 'techsets'):
         from gui_emulator import execute
         return execute(command, s, out, emit, artifact)
     if command == 'verify': return verify(s.get('report_path'), s, out)
     if command not in ('port', 'analyze'): raise ValueError('Unknown job: ' + command)
     name = validate_input(s, command); options = common_options(s)
-    emit('stage', 'Reading PC assets and building the PS3 asset graph')
+    emit('stage', 'Following the PC asset structure and building the PS3 asset graph')
     if command == 'analyze':
         from cod4porter.assembler import analyze_and_assemble
-        assembly = analyze_and_assemble(s['pc_ff'], name, s.get('iwd_paths', []), **options)
+        assembly = analyze_and_assemble(s['pc_ff'], name, s.get('iwd_paths', []), structure_report_path=out / (name + '.pc-structure.json'), **options)
+        artifact(out / (name + '.pc-structure.json'), 'asset-inventory')
         path = out / (name + '.analysis.json')
         save(path, {'map': name, 'source': dict(assembly.source.diagnostics), 'assembly': dict(assembly.diagnostics),
                     'note': 'Analysis is not a build or hardware test.'}); artifact(path, 'analysis')
@@ -285,7 +313,28 @@ def run(request):
                       cubemap_target_face_hashes=cube, zone_budget_bytes=chosen_budget,
                       texture_max_edge=int(s.get('texture_max_edge', 0)),
                       image_budget_min_dimension=int(s.get('image_budget_min_dimension', 32)), **options)
+    structure_path = out / (name + '.pc-structure.json')
+    if structure_path.is_file(): artifact(structure_path, 'asset-inventory')
     artifact(result['report_path'], 'port-report'); artifact(result['main_output'], 'fastfile')
+    omitted=result.get('unsupported_fx',{}).get('omitted_effects',[])
+    if omitted:emit('log', 'Omitted unsupported effects and exclusive dependencies: '+', '.join(omitted))
+    shader_rows=result.get('shader_compilation') or {}
+    compiled_count=len(shader_rows.get('compiled',()))
+    donor_count=len(shader_rows.get('donor_transplants',()))
+    if compiled_count or donor_count:
+        emit('log', 'TechniqueSets owned by this zone: %d compiled PC-to-RSX, %d transplanted from retail donors.'
+             % (compiled_count, donor_count))
+    if shader_rows.get('failed'):
+        emit('log', 'PC-to-RSX compilation could not prove %d TechniqueSet(s); see the port report.'
+             % len(shader_rows['failed']))
+    material_graph=result.get('material_graph') or {}
+    quarantined=int(material_graph.get('materials_quarantined',0) or 0)
+    if quarantined:
+        rows=list(material_graph.get('materials_quarantined_rows',()))
+        names=', '.join(str(row.get('name')) for row in rows[:6])
+        emit('log', 'Auto-quarantined %d material(s) to the engine default surface ($default): %s%s. '
+             'Each keeps its exact failure reason in the port report (material_graph.materials_quarantined_rows).'
+             % (quarantined, names, '' if quarantined<=6 else ', ...'))
     image_plan=result.get('ps3_zone_budget_plan') or {}
     if chosen_budget is not None:
         emit('log', f"Zone budget result: {result.get('ps3_zone_allocation',{}).get('declared_zone_bytes','unknown')} / {chosen_budget} bytes; "
@@ -318,14 +367,30 @@ def main():
         request = json.loads(Path(args.request).read_text(encoding='utf-8-sig'))
         with contextlib.redirect_stdout(stream), contextlib.redirect_stderr(stream):
             status, message = run(request)
-    except (Exception, SystemExit) as exc:
-        message = '%s: %s' % (type(exc).__name__, exc)
+    except OSError as exc:
+        if exc.errno == 28:
+            where = getattr(exc, 'filename', None)
+            message = ('No space left on the disk'
+                       + (f" while writing '{where}'" if where else '')
+                       + '. Free disk space (output drive and the Windows TEMP drive) and run the job again.')
+        else:
+            message = '%s: %s' % (type(exc).__name__, exc)
         emit('log', traceback.format_exc())
+        write_autopsy(exc, request)
         if request and request.get('output_dir'):
             out = Path(request['output_dir'])
             if out.is_dir():
                 for path in sorted(out.glob('*.json')):
-                    if path.name != 'request.json': artifact(path, 'diagnostic')
+                    if path.name not in ('request.json', 'error-autopsy.json'): artifact(path, 'diagnostic')
+    except (Exception, SystemExit) as exc:
+        message = '%s: %s' % (type(exc).__name__, exc)
+        emit('log', traceback.format_exc())
+        write_autopsy(exc, request)
+        if request and request.get('output_dir'):
+            out = Path(request['output_dir'])
+            if out.is_dir():
+                for path in sorted(out.glob('*.json')):
+                    if path.name not in ('request.json', 'error-autopsy.json'): artifact(path, 'diagnostic')
     finally:
         stream.flush()
         summary = dict(status=status, message=message, hardware_tested=False)

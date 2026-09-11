@@ -236,6 +236,16 @@ def xasset_header_alias_index(asset_list:XAssetList,raw:int,expected_type:int)->
 
 
 def parse_impact_fx(z:bytes,asset_list:XAssetList,impact_type:int=0x1A,fx_type:int=0x19)->list[ImpactFx]:
+    if asset_list.structural_index is not None:
+        index=asset_list.structural_index;targets={row['root']:row['index'] for row in index.rows(fx_type)};out=[]
+        for row in index.rows(impact_type):
+            p=index.pointer(row['root']+4);refs=[]
+            for i in range(IMPACT_REFERENCE_COUNT):
+                target=index.pointer(p+i*4)
+                if target is not None and target not in targets:raise ValueError('ImpactFx target is not a top-level FX asset')
+                refs.append(targets.get(target))
+            out.append(ImpactFx(row['index'],row['root'],row['end'],row['name'].lstrip(','),tuple(refs)))
+        return out
     assets=[a for a in asset_list.assets if int(a.type_id)==impact_type]
     if not assets:return []
     if any(decode_pc_pointer(a.serialized_pointer).kind not in ('following','insert') for a in assets):raise ValueError('ImpactFx top-level roots must be inline')
@@ -304,6 +314,10 @@ class FxRunnerBinding:
 class FxRunnerResolution:
     bindings:tuple[FxRunnerBinding,...]
     source_block4_end_anchor:int|None
+    # Owners whose packed references could not be proven, present only when
+    # the resolver ran with on_unprovable='collect':
+    # ({'owner_source_asset_index','owner_name','root_offset','reason'}, ...)
+    failed_owners:tuple=()
 
     @property
     def target_asset_indices_by_raw(self)->dict[int,int]:
@@ -362,21 +376,29 @@ class FxMaterialResolution:
     def target_count(self)->int:return len(set(x.target_material_root for x in self.bindings))
 
 
-def resolve_fx_runner_bindings(map_name:str,fx_references:Sequence[FxReference],*,zone:bytes|None=None,technique_sets:Sequence[object]=())->FxRunnerResolution:
+def resolve_fx_runner_bindings(map_name:str,fx_references:Sequence[FxReference],*,zone:bytes|None=None,technique_sets:Sequence[object]=(),on_unprovable:str='raise')->FxRunnerResolution:
     """Resolve packed type-10 visuals from typed LoadStream ordering.
 
     A distinct packed block-4 word denotes one persistent ``FxEffectDef``
     alias; repeated words denote repeated references to that same target.  PC
-    zones serialize runner targets as the immediately preceding, consecutive
-    top-level FX owners.  Their physical graphs are also exactly contiguous
-    with the runner owner.  These two independent orderings make the replay
-    unique without consulting a map name or an asset-name table.
+    zones serialize the targets of an owner's NEW aliases as the immediately
+    preceding, consecutive top-level FX owners; aliases an earlier owner
+    already proved are reuses of existing cells (the linker deduplicates
+    assets by name) and do not re-serialize their target.  An owner may mix
+    both freely.  Physical contiguity of the new-target run and the monotonic
+    block-4 cell allocation make the replay unique without consulting a map
+    name or an asset-name table.
 
     The resolver deliberately rejects incomplete, non-monotonic, or
     non-contiguous evidence.  In particular it never guesses a target from a
-    nearby address or from a familiar FX name.
+    nearby address or from a familiar FX name.  ``on_unprovable`` selects what
+    an unprovable OWNER does: ``'raise'`` (default) stops exactly as before;
+    ``'collect'`` records the owner in ``FxRunnerResolution.failed_owners``
+    (no bindings, no proof-state pollution) so the caller can route it into
+    the unsupported-FX omission policy instead of aborting the whole port.
     """
-
+    if on_unprovable not in ('raise','collect'):
+        raise ValueError("on_unprovable must be 'raise' or 'collect'")
     # Kept in the public signature because callers already pass the map name;
     # source topology, not that label, is the binding evidence.
     _=map_name
@@ -399,84 +421,116 @@ def resolve_fx_runner_bindings(map_name:str,fx_references:Sequence[FxReference],
             ):
                 raise ValueError(f"FX runner replay graph/reference boundary differs for '{reference.name}'")
 
+    failed=[]
+    def _fail(owner,error):
+        if on_unprovable=='raise':raise error
+        failed.append({'owner_source_asset_index':int(owner.source_asset_index),
+                       'owner_name':owner.name,'root_offset':int(owner.root_offset),
+                       'reason':str(error)})
+
     requests_by_owner={}
     for owner in sorted(references,key=lambda x:x.source_asset_index):
         if not owner.source_owned or owner.graph is None:continue
-        for elem in owner.graph.elements:
-            # Impact/death/emitted references use the same PC FxEffectDef pointer
-            # representation as runners. Negative indices identify these three
-            # fields without pretending they are visual-array entries.
-            for field_index,effect in enumerate((elem.effect_on_impact,elem.effect_on_death,elem.effect_emitted)):
-                if effect.pointer_kind=='packed' and effect.inline_name is None:
-                    p=decode_pc_pointer(effect.serialized_pointer)
-                    if p.block!=4:raise ValueError(f"FX '{owner.name}' effect reference is not in block 4")
-                    requests_by_owner.setdefault(owner.source_asset_index,[]).append(
-                        (elem.index,-1-field_index,effect.serialized_pointer,p.offset))
-            if elem.element_type!=10:continue
-            # When the table pointer itself is packed, parse_owned_fx_at can
-            # prove only the table identity, not the individual entries.  It
-            # intentionally represents those entries as repeated unresolved
-            # visuals, which is insufficient evidence for target binding.
-            if elem.visual_count>1 and decode_pc_pointer(elem.visual_pointer_raw).kind=='packed':
-                raise ValueError(
-                    f"FX runner '{owner.name}' element {elem.index} has an unresolved packed visual table"
-                )
-            for visual_index,visual in enumerate(elem.visuals):
-                if visual.kind is VisualKind.PACKED_UNRESOLVED:
-                    p=decode_pc_pointer(visual.serialized_pointer)
-                    if p.kind!='packed' or p.block!=4:
-                        raise ValueError(f"FX runner '{owner.name}' {elem.index}:{visual_index} is not a packed block-4 reference")
-                    requests_by_owner.setdefault(owner.source_asset_index,[]).append(
-                        (elem.index,visual_index,visual.serialized_pointer,p.offset)
+        rows=[]
+        try:
+            for elem in owner.graph.elements:
+                # Impact/death/emitted references use the same PC FxEffectDef pointer
+                # representation as runners. Negative indices identify these three
+                # fields without pretending they are visual-array entries.
+                for field_index,effect in enumerate((elem.effect_on_impact,elem.effect_on_death,elem.effect_emitted)):
+                    if effect.pointer_kind=='packed' and effect.inline_name is None:
+                        p=decode_pc_pointer(effect.serialized_pointer)
+                        if p.block!=4:raise ValueError(f"FX '{owner.name}' effect reference is not in block 4")
+                        rows.append((elem.index,-1-field_index,effect.serialized_pointer,p.offset))
+                if elem.element_type!=10:continue
+                # When the table pointer itself is packed, parse_owned_fx_at can
+                # prove only the table identity, not the individual entries.  It
+                # intentionally represents those entries as repeated unresolved
+                # visuals, which is insufficient evidence for target binding.
+                if elem.visual_count>1 and decode_pc_pointer(elem.visual_pointer_raw).kind=='packed':
+                    raise ValueError(
+                        f"FX runner '{owner.name}' element {elem.index} has an unresolved packed visual table"
                     )
-    if not requests_by_owner:return FxRunnerResolution((),None)
+                for visual_index,visual in enumerate(elem.visuals):
+                    if visual.kind is VisualKind.PACKED_UNRESOLVED:
+                        p=decode_pc_pointer(visual.serialized_pointer)
+                        if p.kind!='packed' or p.block!=4:
+                            raise ValueError(f"FX runner '{owner.name}' {elem.index}:{visual_index} is not a packed block-4 reference")
+                        rows.append((elem.index,visual_index,visual.serialized_pointer,p.offset))
+        except ValueError as error:
+            _fail(owner,error);continue
+        if rows:requests_by_owner[owner.source_asset_index]=rows
+    if not requests_by_owner:return FxRunnerResolution((),None,tuple(failed))
 
     bindings=[]
     target_by_raw={}
+    proven_offset_by_raw={}
     for owner_index,requests in requests_by_owner.items():
         owner=by_index[owner_index]
-        raw_order=[]
-        alias_offset_by_raw={}
-        for _elem_index,_visual_index,raw,alias_offset in requests:
-            old=alias_offset_by_raw.get(raw)
-            if old is not None and old!=alias_offset:
-                raise ValueError(f"FX runner '{owner.name}' pointer 0x{raw:08X} decodes inconsistently")
-            if raw not in alias_offset_by_raw:
-                raw_order.append(raw)
-                alias_offset_by_raw[raw]=alias_offset
+        try:
+            bindings.extend(_resolve_runner_owner(
+                owner,owner_index,requests,by_index,zone,technique_sets,
+                target_by_raw,proven_offset_by_raw))
+        except ValueError as error:
+            _fail(owner,error);continue
+    return FxRunnerResolution(tuple(bindings),None,tuple(failed))
 
-        alias_offsets=[alias_offset_by_raw[raw] for raw in raw_order]
-        if alias_offsets!=sorted(alias_offsets) or len(set(alias_offsets))!=len(alias_offsets):
-            raise ValueError(f"FX runner '{owner.name}' block-4 aliases are not in unique LoadStream order")
-        occurrence_offsets=[row[3] for row in requests]
-        if occurrence_offsets!=sorted(occurrence_offsets):
-            raise ValueError(f"FX runner '{owner.name}' references revisit an earlier block-4 alias")
 
-        if all(raw in target_by_raw for raw in raw_order):
-            # Later FX can reuse the same already-proven persistent name
-            # references. They do not create a new run of preceding owners.
-            for elem_index,visual_index,raw,alias_offset in requests:
-                target=target_by_raw[raw]
-                if target.source_asset_index>=owner_index:
-                    raise ValueError('FX runner alias target is not an earlier owner')
-                bindings.append(FxRunnerBinding(owner_index,owner.name,elem_index,visual_index,
-                    raw,alias_offset,target.source_asset_index,target.name))
-            continue
+def _resolve_runner_owner(owner,owner_index,requests,by_index,zone,technique_sets,
+                          target_by_raw,proven_offset_by_raw):
+    """Resolve one owner's packed FX references; commit proofs only on success."""
+    raw_order=[]
+    alias_offset_by_raw={}
+    for _elem_index,_visual_index,raw,alias_offset in requests:
+        old=alias_offset_by_raw.get(raw)
+        if old is not None and old!=alias_offset:
+            raise ValueError(f"FX runner '{owner.name}' pointer 0x{raw:08X} decodes inconsistently")
+        if raw not in alias_offset_by_raw:
+            raw_order.append(raw)
+            alias_offset_by_raw[raw]=alias_offset
 
-        # One distinct persistent alias requires one typed target.  The target
-        # run must end immediately before the owner in both XAsset order and
-        # physical LoadStream order; otherwise more than one assignment is
-        # possible and conversion stops.
-        first_target_index=owner_index-len(raw_order)
+    # Aliases an earlier owner already proved are reuses of existing cells,
+    # not new typed targets: the linker deduplicates assets by name and never
+    # re-serializes a target for a repeated reference.  The preceding-run
+    # model therefore applies to the NEW aliases only; a reused alias must
+    # decode to exactly its proven cell and point at an earlier owner.
+    new_raws=[raw for raw in raw_order if raw not in target_by_raw]
+    for raw in raw_order:
+        if raw in target_by_raw:
+            target=target_by_raw[raw]
+            if target.source_asset_index>=owner_index:
+                raise ValueError(f"FX runner '{owner.name}' alias target is not an earlier owner")
+            if proven_offset_by_raw.get(raw)!=alias_offset_by_raw[raw]:
+                raise ValueError(
+                    f"FX runner '{owner.name}' pointer 0x{raw:08X} does not decode to its proven alias cell")
+
+    committed={}
+    if new_raws:
+        new_offsets=[alias_offset_by_raw[raw] for raw in new_raws]
+        if new_offsets!=sorted(new_offsets) or len(set(new_offsets))!=len(new_offsets):
+            raise ValueError(f"FX runner '{owner.name}' new block-4 aliases are not in unique LoadStream order")
+        # Block-4 cells are allocated monotonically over the LoadStream: a new
+        # target's cell must postdate every cell proven so far, or the
+        # preceding-run inference is not unique for this owner.
+        if proven_offset_by_raw and min(new_offsets)<=max(proven_offset_by_raw.values()):
+            raise ValueError(
+                f"FX runner '{owner.name}' new alias cell predates an already-proven cell; "
+                'the preceding-run inference is not unique')
+
+        # One distinct NEW persistent alias requires one typed target.  The
+        # target run must end immediately before the owner in both XAsset
+        # order and physical LoadStream order; otherwise more than one
+        # assignment is possible and this owner is unprovable.
+        first_target_index=owner_index-len(new_raws)
         target_indices=range(first_target_index,owner_index)
         bridged=False
-        if any(i not in by_index for i in target_indices) and zone is not None and len(raw_order)>=2:
+        if any(i not in by_index for i in target_indices) and zone is not None and len(new_raws)>=2:
             # A source-owned shader graph can sit between two target FX assets.
             # Select the preceding FX run only if its full typed member replay
             # reproduces every independent packed target anchor exactly.
             prior=sorted(i for i in by_index if i<owner_index)
-            if len(prior)>=len(raw_order):
-                target_indices=prior[-len(raw_order):];bridged=True
+            if len(prior)>=len(new_raws):
+                target_indices=prior[-len(new_raws):];bridged=True
         targets=[]
         for target_index in target_indices:
             target=by_index.get(target_index)
@@ -495,7 +549,7 @@ def resolve_fx_runner_bindings(map_name:str,fx_references:Sequence[FxReference],
             if left.physical_end_offset!=right.root_offset or bridged:
                 if bridged:
                     from .pc_technique_replay import replay_technique_members
-                    anchor=alias_offsets[targets.index(left)]
+                    anchor=new_offsets[targets.index(left)]
                     cursor,_cells=_replay_fx_member_b4(zone,left,anchor)
                     physical=left.physical_end_offset
                     for ai in range(left.source_asset_index+1,right.source_asset_index):
@@ -507,32 +561,32 @@ def resolve_fx_runner_bindings(map_name:str,fx_references:Sequence[FxReference],
                         cursor=replay_technique_members(zone,technique,cursor,end);physical=end
                     if physical!=right.root_offset:
                         raise ValueError('FX runner corridor physical end differs')
-                    if right is not owner and cursor!=alias_offsets[targets.index(right)]:
+                    if right is not owner and cursor!=new_offsets[targets.index(right)]:
                         raise ValueError(f"FX runner '{owner.name}' typed bridge from '{left.name}' "
                             f"ends at 0x{cursor:X}, conflicts with packed target anchor "
-                            f"0x{alias_offsets[targets.index(right)]:X}")
+                            f"0x{new_offsets[targets.index(right)]:X}")
                     continue
                 raise ValueError(
                     f"FX runner '{owner.name}' target corridor is not physically contiguous "
                     f"at XAsset #{left.source_asset_index}->#{right.source_asset_index}"
                 )
+        committed=dict(zip(new_raws,targets))
 
-        target_for_raw=dict(zip(raw_order,targets))
-        for raw,target in target_for_raw.items():
-            old=target_by_raw.get(raw)
-            if old is not None and old.source_asset_index!=target.source_asset_index:
-                raise ValueError(
-                    f'FX runner pointer 0x{raw:08X} has conflicting typed targets '
-                    f'#{old.source_asset_index} and #{target.source_asset_index}'
-                )
-            target_by_raw[raw]=target
-        for elem_index,visual_index,raw,alias_offset in requests:
-            target=target_for_raw[raw]
-            bindings.append(FxRunnerBinding(
-                owner_index,owner.name,elem_index,visual_index,raw,alias_offset,
-                target.source_asset_index,target.name,
-            ))
-    return FxRunnerResolution(tuple(bindings),None)
+    target_for_raw={raw:target_by_raw[raw] for raw in raw_order if raw in target_by_raw}
+    target_for_raw.update(committed)
+    rows=[]
+    for elem_index,visual_index,raw,alias_offset in requests:
+        target=target_for_raw[raw]
+        rows.append(FxRunnerBinding(
+            owner_index,owner.name,elem_index,visual_index,raw,alias_offset,
+            target.source_asset_index,target.name,
+        ))
+    # Success: commit the new proofs atomically so a later failed owner never
+    # inherits partial state from this one.
+    for raw,target in committed.items():
+        target_by_raw[raw]=target
+        proven_offset_by_raw[raw]=alias_offset_by_raw[raw]
+    return rows
 
 
 class _FxMemberReplayUnavailable(ValueError):pass
@@ -792,6 +846,15 @@ def _looks_fx_name(name:str)->bool:
 
 
 def top_level_fx(z:bytes,asset_list:XAssetList,*,excluded_ranges:tuple[tuple[int,int],...]=())->tuple[FxReference,...]:
+    if asset_list.structural_index is not None:
+        out=[]
+        for row in asset_list.structural_index.rows(PC_FX_TYPE):
+            root=row['root'];owned=bool(u32(z,root+0x1c))
+            graph=parse_owned_fx_at(z,root) if owned else None
+            if graph is not None and graph.physical_end_offset!=row['end']:
+                raise ValueError(f"FX semantic reader differs from structural end for {row['name']!r}")
+            out.append(FxReference(row['index'],root,row['end'],row['name'].lstrip(','),owned,graph,graph.inline_material_roots if graph else ()))
+        return tuple(out)
     assets=sorted((a for a in asset_list.assets if int(a.type_id)==PC_FX_TYPE),key=lambda a:a.index)
     if not assets:return ()
     if any(decode_pc_pointer(a.serialized_pointer).kind=='packed' for a in assets):

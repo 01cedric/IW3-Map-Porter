@@ -893,6 +893,13 @@ def locate_and_parse_sound(zone:bytes,asset_list=None,map_name:str|None=None,pro
     sounds=[a for a in asset_list.assets if a.type_id==0x07]
     if not sounds:return SoundCatalog((),SoundFileLayout.LEGACY_0C,asset_list.asset_data_offset,asset_list.asset_data_offset,None,0,0,0,0,0)
     if any(decode_pc_pointer(a.serialized_pointer).kind not in ('following','insert') for a in sounds):raise ValueError('top-level Sound XAsset is not inline')
+    if asset_list.structural_index is not None:
+        rows=asset_list.structural_index.rows(7)
+        result=parse_sound_run_at(zone,asset_list,rows[0]['root'],SoundFileLayout.LEGACY_0C)
+        actual=[item.root_offset for item in result.lists]
+        if actual!=[row['root'] for row in rows]:
+            raise ValueError('Sound semantic reader differs from structural asset order')
+        return result
     block4=parse_zone_header(zone,'pc').block_sizes[4]
 
     # FIX105/FIX113-derived fast path: prove the map-specific final RawFile boundary first.

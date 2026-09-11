@@ -429,7 +429,8 @@ def find_iwd_image(
     return matches[0]
 
 
-def _image_asset_from_iwd(source: PcLoadSource, iwd: IwdImageSource) -> ImageAsset:
+def _image_asset_from_iwd(source: PcLoadSource, iwd: IwdImageSource,
+                          notes: list | None = None) -> ImageAsset:
     pc = source.levelbriefing_image.loaddef
     if pc is None:
         raise AssertionError("validated PC levelbriefing has no loadDef")
@@ -442,9 +443,16 @@ def _image_asset_from_iwd(source: PcLoadSource, iwd: IwdImageSource) -> ImageAss
             f"{image.width}x{image.height}x{image.depth} vs {pc.width}x{pc.height}x{pc.depth}"
         )
     if image.format_name != PC_FORMATS[pc.pc_format]:
-        raise ValueError(
-            f"IWI format {image.format_name} does not match PC load format {PC_FORMATS[pc.pc_format]}"
-        )
+        # The IWI is the pixel authority: on PC the engine streams the IWI at
+        # runtime and the loadDef format byte is a metadata stub, and custom
+        # loading screens routinely ship e.g. DXT5 pixels behind a DXT1 stub
+        # (mp_osg_raid).  The PS3 load zone serializes the IWI's own format
+        # and sizes (from_iwi below), so accepting the mismatch stays
+        # byte-consistent; it is recorded as a fidelity note, never guessed.
+        if notes is not None:
+            notes.append(
+                f"loadscreen_format_from_iwi:{image.format_name}"
+                f"_over_pc_declared_{PC_FORMATS[pc.pc_format]}")
     # An IW3 loadDef may declare levelCount 0, which means "the full chain implied by the
     # dimensions" rather than "no mip levels".  mp_getaway's 1024x1024 loadscreen does
     # exactly that while its IWI carries all 11 levels.  Derive the expected count in
@@ -729,14 +737,15 @@ def convert_pc_load_to_ps3(
         raise FileExistsError(f"refusing to overwrite existing output {output_path}")
 
     iwd = find_iwd_image(iwd_paths, source.levelbriefing_image.name)
-    image = _image_asset_from_iwd(source, iwd)
+    image_notes: list[str] = []
+    image = _image_asset_from_iwd(source, iwd, image_notes)
     defeat_image=None
     defeat_missing=False
     if source.defeat_image is not None:
         defeat_source=replace(source,levelbriefing_image=source.defeat_image)
         try:defeat_iwd=find_iwd_image(iwd_paths,source.defeat_image.name)
         except MissingIwdImage:defeat_missing=True
-        else:defeat_image=replace(_image_asset_from_iwd(defeat_source,defeat_iwd),name=source.defeat_image.name)
+        else:defeat_image=replace(_image_asset_from_iwd(defeat_source,defeat_iwd,image_notes),name=source.defeat_image.name)
     if source.victory_image is None:
         external_audit=None;victory_image=None
         victory_provenance='shared $victorybackdrop material; no image payload owned by the source'
@@ -757,6 +766,7 @@ def convert_pc_load_to_ps3(
     if defeat_missing:
         load_full_fidelity=False
         compatibility_fallbacks.append('native_shared_defeatbackdrop_missing_source_pixels')
+    compatibility_fallbacks.extend(image_notes)
     target_doc = _fresh_target_document(
         source,
         BUILTIN_PS3_LOAD_UI_V1,

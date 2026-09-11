@@ -54,11 +54,16 @@ class ZoneLoader:
             self.links = machine.links; self.externals = machine.externals
         self.scratch = SCRATCH
         self.trace = None
+        # Always-on ring of the most recent stream reads: on a load fault this
+        # maps the poisoned bytes back to their zone-file offsets (faultscan).
+        self.stream_ring = collections.deque(maxlen=32)
         def on_loadstream(cpu):
-            if self.trace is None: return
             ats = cpu.r[3] & MASK32; ptr = cpu.r[4] & MASK32; n = cpu.r[5] & MASK32
-            if ats and n:
-                self.trace.append((cpu.lr - 4, self.pos, n, self.m.u32(S_STREAM + 8), ptr))
+            if not (ats and n): return
+            block = self.m.u32(S_STREAM + 8)
+            self.stream_ring.append((self.pos, ptr, n, block))
+            if self.trace is not None:
+                self.trace.append((cpu.lr - 4, self.pos, n, block, ptr))
         self.cpu.hooks[0xe0608] = on_loadstream
         self.hdr = struct.unpack('>9I', zone[:36])
         self.sizes = list(self.hdr[2:9])
@@ -212,6 +217,16 @@ class ZoneLoader:
                 except Exception as exc:
                     self.note('ASSET %d type %s FAILED at file %#x: %r'
                               % (i, TYPE_NAMES.get(typ, typ), before, exc))
+                    try:
+                        from faultscan import build_fault_forensics
+                        self.fault_forensics = build_fault_forensics(
+                            str(exc), self.z, before, self.pos, i,
+                            str(TYPE_NAMES.get(typ, typ)), self.sizes,
+                            self.block_base, list(self.stream_ring))
+                        for line in self.fault_forensics.get('log_lines', ()):
+                            self.note(line)
+                    except Exception:
+                        self.fault_forensics = None
                     raise
                 self.track()
                 au = self.block_use()

@@ -50,6 +50,9 @@ class MaterialUniverse:
     planned_owned:tuple[PlannedMaterial,...]
     external_shared:tuple[tuple[int|None,MaterialRecord],...]
     xmodel_material_resolution:dict
+    # Materials whose planning failed and that the graph rebinds to ,$default
+    # (runtime-compatible mode only): ({'name','root','source_asset_index','reason'}, ...)
+    quarantined_materials:tuple=()
 
 def _state_signature(states:Sequence[tuple[int,int]])->tuple[tuple[int,int],...]:
     return tuple((int(a)&0xffffffff,int(b)&0xffffffff) for a,b in states)
@@ -84,6 +87,9 @@ def top_level_materials(
     expected_names_by_asset_index:Mapping[int,str]|None=None,*,
     first_root_hint:int|None=None,
 )->tuple[TopLevelMaterial,...]:
+    if asset_list.structural_index is not None:
+        return tuple(TopLevelMaterial(row['index'],parse_material_at(zone,row['root'])[0])
+            for row in asset_list.structural_index.rows(PC_MATERIAL))
     assets=sorted((a for a in asset_list.assets if a.type_id==PC_MATERIAL),key=lambda a:a.index)
     if not assets:return ()
     if any(decode_pc_pointer(a.serialized_pointer).kind not in ('following','insert') for a in assets):
@@ -300,8 +306,14 @@ def plan_materials(
     materials:Sequence[tuple[int|None,MaterialRecord]],asset_list:XAssetList,
     techniques:Sequence[TechniqueSet],technique_bindings:Sequence[TechniqueBinding],
     all_image_donors:Sequence[MaterialRecord]|None=None,*,allow_runtime_neutral:bool=False,
-    resolved_image_proof:Mapping[str,object]|None=None,
+    resolved_image_proof:Mapping[str,object]|None=None,quarantine:list|None=None,
 )->tuple[PlannedMaterial,...]:
+    """``quarantine`` (a list collector) turns per-material planning failures
+    into rows instead of aborting the conversion: the caller rebinds the
+    collected materials to the engine's ,$default (the hardware-proven CP12-A
+    closure) so ANY material-planning error class - present or future - costs
+    that one surface, never the map.  With ``quarantine=None`` (the full-port
+    default) every failure still stops the conversion exactly as before."""
     donors=tuple(all_image_donors or (m for _,m in materials))
     image=dict(resolved_image_proof) if resolved_image_proof is not None else resolve_image_identities(
         donors,asset_list,allow_runtime_neutral=allow_runtime_neutral)
@@ -309,4 +321,12 @@ def plan_materials(
         raise ValueError(f"unresolved packed GfxImages ({len(image['unresolved'])}): {image['unresolved'][:4]}")
     byslot={(b.material_root,b.texture_index):b for b in image['bindings']}
     tech={x.source_asset_index:x for x in techniques};bind={x.source_asset_index:x for x in technique_bindings}
-    return tuple(plan_material(m,ai,asset_list,tech,bind,byslot,runtime_compatible=allow_runtime_neutral) for ai,m in materials)
+    planned=[]
+    for ai,m in materials:
+        try:
+            planned.append(plan_material(m,ai,asset_list,tech,bind,byslot,runtime_compatible=allow_runtime_neutral))
+        except ValueError as error:
+            if quarantine is None:raise
+            quarantine.append({'name':m.name,'root':int(m.root_offset),
+                               'source_asset_index':ai,'reason':str(error)})
+    return tuple(planned)

@@ -41,17 +41,23 @@ def _packed_ok(raw:int,block_sizes:Sequence[int])->bool:
         return p.kind=='packed' and p.block is not None and p.offset is not None and 0<=p.block<len(block_sizes) and 0<=p.offset<block_sizes[p.block]
     except Exception:return False
 
+RESULT_PREFIXES={
+  AssetType.TECHSET:('techset.external:','techset.owned:'),AssetType.LOCALIZE:('localize:',),AssetType.IMAGE:('image:','image.external:'),
+  AssetType.MATERIAL:('material:','material.external:'),AssetType.LIGHTDEF:('lightdef:',),
+  AssetType.PHYSPRESET:('physpreset:',),AssetType.XMODEL:('xmodel:','xmodel.external:'),AssetType.COMWORLD:('comworld:',),
+  AssetType.GFXWORLD:('gfxworld:',),AssetType.GAMEWORLD_MP:('gameworldmp:',),AssetType.CLIPMAP_MP:('clipmap:',),
+  AssetType.RAWFILE:('rawfile:',),AssetType.STRINGTABLE:('stringtable:',),AssetType.FX:('fx.owned:','fx.external:'),
+  AssetType.IMPACTFX:('impactfx:',),AssetType.SOUND:('sound:',),AssetType.SNDCURVE:('sndcurve:',),AssetType.LOADED_SOUND:('loadedsound:',),
+}
+# A bare string here would iterate per character and never match a result key
+# (the 22.2.1 LOADED_SOUND regression) - keep the table shape provable.
+for _prefixes in RESULT_PREFIXES.values():
+    if not isinstance(_prefixes,tuple) or not all(isinstance(p,str) and p.endswith(':') for p in _prefixes):
+        raise RuntimeError('RESULT_PREFIXES entries must be tuples of ":"-terminated strings')
+
 def _result_key(node,results:Mapping[str,Any])->str|None:
-    prefixes={
-      AssetType.TECHSET:('techset.external:',),AssetType.IMAGE:('image:','image.external:'),
-      AssetType.MATERIAL:('material:','material.external:'),AssetType.LIGHTDEF:('lightdef:',),
-      AssetType.PHYSPRESET:('physpreset:',),AssetType.XMODEL:('xmodel:','xmodel.external:'),AssetType.COMWORLD:('comworld:',),
-      AssetType.GFXWORLD:('gfxworld:',),AssetType.GAMEWORLD_MP:('gameworldmp:',),AssetType.CLIPMAP_MP:('clipmap:',),
-      AssetType.RAWFILE:('rawfile:',),AssetType.STRINGTABLE:('stringtable:',),AssetType.FX:('fx.owned:','fx.external:'),
-      AssetType.IMPACTFX:('impactfx:',),AssetType.SOUND:('sound:',),AssetType.SNDCURVE:('sndcurve:',),AssetType.LOADED_SOUND:('loadedsound:'),
-    }
     hits=[]
-    for p in prefixes.get(node.type,()):
+    for p in RESULT_PREFIXES.get(node.type,()):
         k=p+node.symbol
         if k in results:hits.append(k)
     if len(hits)!=1:return None

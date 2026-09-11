@@ -1681,13 +1681,102 @@ def replay_gfxworld_sky_image_owner_alias(
     }
 
 
+def structural_image_aliases(all_materials: Sequence[MaterialRecord], structural_index) -> dict:
+    """Serve every packed block-4 image request from the structural reader.
+
+    The reader already resolved every Material texture (and water_t image)
+    pointer field to its GfxImage OBJECT root during the typed zone walk, so
+    cell identity needs no block-4 cursor replay, no AABB anchor and no
+    backward topology proofs: each requesting FIELD maps to its image object
+    through the reader's allocation map, and the request's own packed offset
+    keys the alias.  Requests that meet at one cell must agree on the image.
+    """
+    objects = {int(row['root']): row
+               for row in structural_index.report.get('objects', ())
+               if row.get('root') is not None}
+    requests = _packed_requests(all_materials)
+    aliases: dict[int, str] = {}
+    provenance: dict[int, dict] = {}
+    slots = 0
+    for material in all_materials:
+        if not material.textures:
+            continue
+        table = None
+        for texture_index in range(len(material.textures)):
+            raw = serialized_image_pointer(material, texture_index)
+            pointer = decode_pc_pointer(int(raw))
+            if pointer.kind != 'packed' or pointer.block != 4 or pointer.offset is None:
+                continue
+            if table is None:
+                table = structural_index.pointer(int(material.root_offset) + 0x44)
+                if not isinstance(table, int):
+                    raise ValueError(
+                        f"Material '{material.name}' texture table did not structurally resolve")
+            cell_field = table + texture_index * 0x0C + 8
+            if material.water_by_texture.get(texture_index) is not None:
+                water_root = structural_index.pointer(cell_field)
+                if not isinstance(water_root, int):
+                    raise ValueError(
+                        f"Material '{material.name}' water_t did not structurally resolve")
+                field = water_root + PC_WATER_IMAGE_POINTER
+            else:
+                field = cell_field
+            target = structural_index.pointer(field)
+            if not isinstance(target, int):
+                raise ValueError(
+                    f"Material '{material.name}' texture[{texture_index}] image pointer "
+                    'did not structurally resolve')
+            row = objects.get(target)
+            if row is None or row.get('type') != 'GfxImage':
+                raise ValueError(
+                    f"Material '{material.name}' texture[{texture_index}] packed image resolves "
+                    f"to {(row or {}).get('type', 'no object')!r} at 0x{target:X}")
+            name = _normal_image_name(row.get('name'))
+            if not name:
+                raise ValueError(f'structurally resolved GfxImage at 0x{target:X} has no name')
+            offset = int(pointer.offset)
+            old = aliases.get(offset)
+            if old is not None and old != name:
+                raise ValueError(
+                    f'structural image alias conflict at block4+0x{offset:X}: {old!r}/{name!r}')
+            aliases[offset] = name
+            slots += 1
+            provenance.setdefault(offset, {
+                'owner': 'structural-reader', 'material': material.name,
+                'material_root': int(material.root_offset),
+                'texture_index': texture_index, 'image_root': target,
+            })
+    if set(aliases) != set(requests):
+        missing = sorted(set(requests) - set(aliases))
+        raise ValueError('structural image aliases missed requests: '
+                         + ', '.join(f'0x{x:X}' for x in missing[:8]))
+    return {
+        'aliases': aliases,
+        'exact_direct_alias_targets': tuple(sorted(aliases)),
+        'alias_modes': {offset: 'gfxworld_structural_exact' for offset in aliases},
+        'accepted_target_count': len(aliases), 'accepted_slot_count': slots,
+        'provenance': provenance,
+        'diagnostics': {'mode': 'structural_exact', 'requests': len(requests),
+                        'served': len(aliases)},
+    }
+
+
 def replay_gfxworld_image_aliases(
     pc_zone: bytes,
     gfxworld,
     gfx_materials: Sequence[MaterialRecord],
     all_materials: Sequence[MaterialRecord],
+    *,
+    structural_index=None,
 ) -> dict:
     """Replay the GfxWorld-owned MaterialTextureDef graph from a typed AABB anchor.
+
+    The cursor replay stays authoritative because its byproducts (the exact
+    graph end feeds ``draw_array_base``) are needed beyond identity.  A
+    structural index adds an INDEPENDENT certification: every replayed cell
+    identity is compared against the reader's per-field resolution, and a
+    graph that offers fewer than two backward topology proofs (mp_osg_raid)
+    is accepted when the two derivations agree instead of failing closed.
 
     The world preamble is replayed from the exact block-4 Cell base proven by packed AABB reuse.
     Retail streams may place up to one final 16-byte alignment pad before recursively loading the
@@ -1695,6 +1784,13 @@ def replay_gfxworld_image_aliases(
     select one base by landing on earlier typed ``MaterialTextureDef::image`` cells.  Names never
     participate in base selection; they are read only after exact cell identity is established.
     """
+    structural = None
+    structural_error = None
+    if structural_index is not None:
+        try:
+            structural = structural_image_aliases(all_materials, structural_index)
+        except ValueError as error:
+            structural_error = str(error)
     if not gfx_materials:
         return {'aliases': {}, 'exact_direct_alias_targets': (), 'accepted_target_count': 0,
                 'accepted_slot_count': 0, 'diagnostics': {'reason': 'no GfxWorld Materials'}}
@@ -1993,8 +2089,18 @@ def replay_gfxworld_image_aliases(
         if owner is None or int(owner['material_index']) >= int(use['material_index']):
             continue
         topology_targets.add(target)
+    structurally_certified = False
     if len(topology_targets) < 2:
-        raise ValueError('GfxWorld absolute owner replay has fewer than two backward topology proofs')
+        # The graph offers too few packed backward edges to certify itself.
+        # The structural reader's per-field resolution certifies instead: the
+        # replayed identities are compared against it below, and any mismatch
+        # or missing coverage raises there.
+        if structural is None:
+            raise ValueError(
+                'GfxWorld absolute owner replay has fewer than two backward topology proofs'
+                + (f' (structural certification unavailable: {structural_error})'
+                   if structural_error else ''))
+        structurally_certified = True
 
     identity_by_address: dict[int, str] = {}
     edge_by_address: dict[int, int] = {}
@@ -2051,8 +2157,31 @@ def replay_gfxworld_image_aliases(
         provenance[int(target)] = sky_replay['provenance'][int(target)]
     sky_targets = set(int(x) for x in sky_replay.get('exact_direct_alias_targets', ()))
     exact_direct = tuple(sorted((set(aliases) & set(identity_by_address)) | sky_targets))
+    structural_matches = 0
+    structural_mismatches = []
+    if structural is not None:
+        for target, name in aliases.items():
+            expected = structural['aliases'].get(int(target))
+            if expected == name:
+                structural_matches += 1
+            else:
+                structural_mismatches.append({'target': int(target), 'replayed': str(name),
+                                              'structural': expected})
+        if structurally_certified:
+            # The structural reader is the certifier here: the derivations
+            # must agree on every replayed cell and prove at least one.
+            if structural_mismatches:
+                raise ValueError(
+                    'GfxWorld replay disagrees with the structural reader at '
+                    + ', '.join(f"b4+0x{row['target']:X}" for row in structural_mismatches[:4]))
+            if not structural_matches:
+                raise ValueError(
+                    'GfxWorld replay has neither topology proofs nor a structurally matched cell')
     return {
         'aliases': aliases, 'exact_direct_alias_targets': exact_direct,
+        'structurally_certified': structurally_certified,
+        'structural_matches': structural_matches,
+        'structural_mismatches': structural_mismatches,
         'alias_modes': {
             int(target): (
                 'gfxworld_sky_owner_interval_replay'

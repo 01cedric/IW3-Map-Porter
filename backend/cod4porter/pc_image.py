@@ -162,6 +162,16 @@ def locate_top_level_images(
     expected_names_by_asset_index: Mapping[int,str] | None = None,
     iwd_names: Iterable[str] = (),
 ) -> PcImageCatalog:
+    if asset_list.structural_index is not None:
+        from dataclasses import replace
+        index=asset_list.structural_index;records={};names={};rows=index.rows(PC_IMAGE);packed_count=0
+        for row in rows:
+            r=row['root'];a=asset_list.assets[row['index']]
+            names[row['index']]=row['name']
+            if decode_pc_pointer(a.serialized_pointer).kind=='packed':packed_count+=1;continue
+            rec=parse_image_at(zone,r,row['index'])
+            records[row['index']]=replace(rec,name=row['name'])
+        return PcImageCatalog(records,names,len(records),packed_count,min((r['start'] for r in rows),default=None),max((r['end'] for r in rows),default=None))
     assets=sorted((a for a in asset_list.assets if a.type_id==PC_IMAGE),key=lambda a:a.index)
     if not assets:return PcImageCatalog({},dict(expected_names_by_asset_index or {}),0,0,None,None)
     inline=[a for a in assets if decode_pc_pointer(a.serialized_pointer).kind in ('following','insert')]

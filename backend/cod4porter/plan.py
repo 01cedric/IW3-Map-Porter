@@ -14,6 +14,7 @@ class DispositionKind(str, Enum):
     EMITTED = 'emitted'
     MERGED = 'merged'
     EXTERNAL_NATIVE = 'external_native'
+    OMITTED = 'omitted'
 
 
 @dataclass(frozen=True)
@@ -295,7 +296,7 @@ class PortPlan:
                     raise ValueError(
                         f'source #{d.source_index} merged parent missing: {d.target_symbol}'
                     )
-            elif d.kind == DispositionKind.EXTERNAL_NATIVE:
+            elif d.kind in (DispositionKind.EXTERNAL_NATIVE, DispositionKind.OMITTED):
                 if not d.reason:
                     raise ValueError(
                         f'source #{d.source_index} external-native classification needs evidence/reason'

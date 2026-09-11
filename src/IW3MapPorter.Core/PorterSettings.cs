@@ -28,6 +28,9 @@ public sealed class PorterSettings
     public string UnresolvedMaterialPolicy { get; set; } = "reference";
     public string PrimaryLightPolicy { get; set; } = "source";
     public string VertexLayerPolicy { get; set; } = "source";
+    public string UnsupportedFxPolicy { get; set; } = "omit";
+    public string ShaderCompilation { get; set; } = "auto";
+    public string DonorCatalog { get; set; } = "";
     public string PortalPolicy { get; set; } = "source";
     public string ZoneBudgetBytes { get; set; } = "off";
     public bool AutomaticZoneBudget { get; set; } = true;
@@ -80,6 +83,10 @@ public sealed class PorterSettings
         }
         if (command is "port" or "analyze")
         {
+            if (!string.IsNullOrWhiteSpace(DonorCatalog) && !File.Exists(DonorCatalog))
+                yield return "TechniqueSet donor catalog (techset-donors.json) is missing.";
+            if (ShaderCompilation is not ("auto" or "prefer" or "off"))
+                yield return "Shader compilation must be auto, prefer or off.";
             if (!Regex.IsMatch(MapName ?? "", @"\Amp_[a-z0-9_]+\z"))
                 yield return "Map name must start with mp_ followed by lowercase letters, digits and underscores.";
             if (!File.Exists(PcFf)) yield return "PC main fastfile is missing.";
@@ -100,12 +107,12 @@ public sealed class PorterSettings
                 yield return "Zone budget must be a positive byte count or off.";
             if (TextureMaxEdge < 0 || ImageBudgetMinDimension < 1) yield return "Invalid texture limits.";
         }
-        if (command is "emulate" or "link")
+        if (command is "emulate" or "link" or "techsets")
         {
             if (!File.Exists(Ps3Ff)) yield return "PS3 fastfile is missing.";
             if (!File.Exists(ElfPath)) yield return "Decrypted EBOOT in ELF format is missing.";
         }
-        if (command == "link")
+        if (command is "link" or "techsets")
         {
             if (!string.IsNullOrWhiteSpace(Ps3LoadFf) && !File.Exists(Ps3LoadFf)) yield return "PS3 loading companion is missing.";
             if (!Directory.Exists(SupportDirectory)) yield return "Retail support folder is missing.";

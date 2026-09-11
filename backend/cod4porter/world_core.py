@@ -64,7 +64,16 @@ def _resolve_repeated_primary_light_def_names(lights:tuple[ComPrimaryLight,...])
     )
 
 
-def parse_comworld(z:bytes,expected_name:str,expected_primary_light_count:int)->ComWorld:
+def parse_comworld(z:bytes,expected_name:str,expected_primary_light_count:int,*,structural_index=None)->ComWorld:
+    if structural_index is not None:
+        index=structural_index;r=index.single_root(12);row=index.rows(12)[0];count=i32(z,r+8)
+        if row['name'].lower()!=expected_name.lower() or count!=expected_primary_light_count:
+            raise ValueError('ComWorld structural name/count mismatch')
+        arr=index.pointer(r+12);lights=[]
+        for i in range(count):
+            q=arr+i*PRIMARY_LIGHT_SIZE
+            lights.append(ComPrimaryLight(i,*z[q:q+4],tuple(f32(z,q+4+j*4) for j in range(15)),u32(z,q+0x40),index.pointer(q+0x40)))
+        return ComWorld(r,row['end'],row['name'],i32(z,r+4),tuple(lights))
     needle=expected_name.encode('latin-1')+b'\0';candidates=[];search=0
     while True:
         no=z.find(needle,search)

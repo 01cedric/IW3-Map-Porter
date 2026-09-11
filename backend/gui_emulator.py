@@ -27,6 +27,8 @@ def zone_bytes(path):
 
 def validate_elf(path):
     path = Path(path)
+    if not str(path).strip() or not path.is_file():
+        raise ValueError('Select the decrypted PS3 EBOOT ELF first (elf_path is empty or not a file).')
     with path.open('rb') as f: header = f.read(64)
     if len(header) < 64 or header[:6] != b'\x7fELF\x02\x02' or struct.unpack_from('>H', header, 18)[0] != 21:
         raise ValueError('Expected a decrypted PS3 PPC64 big-endian EBOOT ELF, not a SELF/BIN file.')
@@ -137,7 +139,27 @@ def export_linked(machine, name, out, settings, zone):
             if surface.get('material_header',0)>=0x10000:
                 materials[surface['material_header']]=surface['material']
     textures = export_materials(machine, materials, settings, zone, out)
-    return export_scene(d, dict(materials=world['materials'], name=world['name'], entity_string=text), out, models, textures)
+    try:
+        from fx_simulation import export_fx_simulations
+        by_material = {name.lstrip(','): filename for name, filename in textures.items()}
+        export_fx_simulations(machine, out, textures_by_material=by_material)
+    except Exception as exc:  # noqa: BLE001 - the scene stays usable without FX playback
+        (Path(out) / 'fx-simulation.json').write_text(
+            json.dumps({'schema': 'iw3-fx-simulation/v1', 'effects': [],
+                        'errors': [{'error': str(exc)}]}), encoding='utf-8')
+    try:
+        from gui_fx_placements import export_fx_placements
+        export_fx_placements(machine, name, out)
+    except Exception:  # noqa: BLE001 - ambient placement is a preview extra
+        pass
+    sky_materials = sorted({
+        str(world['materials'].get(world['surfaces'][i][6], '')).lstrip(',')
+        for i in world.get('sky_surface_indices', ())
+        if 0 <= i < len(world['surfaces'])
+    } - {''})
+    meta = dict(materials=world['materials'], name=world['name'], entity_string=text,
+                sun=world.get('sun'), sky_material_names=sky_materials)
+    return export_scene(d, meta, out, models, textures)
 
 
 def linker_message(report, cached=False, preview=True):
@@ -215,6 +237,17 @@ def _execute(command, s, out, emit, artifact):
         emit('log','Checking loading companion before the main map: '+companion.name)
     else:
         emit('log','No loading companion selected; this check covers the main fastfile only.')
+    def on_linked_techsets(machine, result):
+        emit('stage', 'Extracting linked TechniqueSets for RSX calibration and donor export')
+        import techsetcheck
+        r = techsetcheck.run(machine, out, source_label=s['map_name'])
+        artifact(r['calibration'], 'rsx-calibration')
+        artifact(r['donors'], 'techset-donors')
+        artifact(r['donor_payloads'], 'techset-donors')
+        emit('log', 'TechniqueSets extracted: %d; calibration %s; walk errors: %d.'
+             % (r['techsets_extracted'],
+                'PASSED' if r['calibration_passed'] else 'FAILED (see rsx-calibration.json)',
+                r['walk_errors']))
     def on_linked(machine, result):
         emit('stage', 'Reading linked geometry, XModels and MapEnts for the 3D preview')
         scene = export_linked(machine, s['map_name'], out, s, data)
@@ -224,7 +257,8 @@ def _execute(command, s, out, emit, artifact):
         if material_report['missing_diffuse_materials']:
             emit('log','Missing preview pixels: select the PC CoD4 main folder under Port > PC texture library, then rebuild the scene. Rebuild FastFiles separately to include those pixels on PS3.')
         artifact(scene, 'scene')
-    rc = linkcheck.main(link_args, on_linked=on_linked if command == 'link' else None)
+    hook = on_linked if command == 'link' else on_linked_techsets if command == 'techsets' else None
+    rc = linkcheck.main(link_args, on_linked=hook)
     report = Path(str(zone) + '.link.json')
     result = {}
     if report.is_file():

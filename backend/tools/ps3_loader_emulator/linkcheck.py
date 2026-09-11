@@ -73,6 +73,13 @@ def main(argv, *, on_linked=None):
             log('loading companion: %d assets, stream and block bounds match'%len(companion.assets))
         except Exception as exc:
             out.update(status='loading_companion_error',error=str(exc))
+            companion_zl=M.current
+            if companion_zl is not None:
+                forensics=getattr(companion_zl,'fault_forensics',None)
+                if forensics:
+                    out['fault_forensics']={k:v for k,v in forensics.items() if k!='log_lines'}
+                    for line in forensics.get('log_lines',()):log('   '+line)
+                out['load_notes']=list(companion_zl.notes[-40:])
             json.dump(out,open(map_zone+'.link.json','w'),indent=1)
             log('loading companion failed: '+str(exc));return 1
 
@@ -96,6 +103,18 @@ def main(argv, *, on_linked=None):
         status = 'emulation_error'; error = repr(e)
         zl = M.current
         log('map zone emulation stopped after %d assets: %r' % (len(zl.assets), e))
+    if status != 'ok' and zl is not None:
+        # Fault forensics: the failing asset row and the poisoned pointer cells,
+        # straight into the console log and the link report.
+        forensics = getattr(zl, 'fault_forensics', None)
+        if forensics:
+            out['fault_forensics'] = {k: v for k, v in forensics.items() if k != 'log_lines'}
+            for line in forensics.get('log_lines', ()):
+                log('   ' + line)
+        elif zl.notes:
+            for note in zl.notes[-4:]:
+                log('   ' + note)
+        out['load_notes'] = list(zl.notes[-40:])
     out['status'] = status; out['error'] = error
     out['material_registration'] = {'native': True,
         'calls': M.material_registration_calls - n_materials0,

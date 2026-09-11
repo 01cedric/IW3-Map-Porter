@@ -37,6 +37,9 @@ def main(argv=None):
     p.add_argument('--ps3-zone-budget',default=str(DEFAULT_ZONE_BUDGET_BYTES),help=f'maximum declared zone allocation in bytes, or "off" to disable the gate; the default {DEFAULT_ZONE_BUDGET_BYTES} is the measured Retail PS3 mp_shipment zone ({RETAIL_PS3_SHIPMENT_ZONE_BYTES} bytes). Oversized textures are reduced by whole mip levels until the map fits')
     p.add_argument('--image-budget-min-dimension',type=int,default=DEFAULT_MIN_BASE_DIMENSION,help='never shrink a texture below this base edge length while meeting the zone budget')
     p.add_argument('--texture-max-edge',type=int,default=RETAIL_PS3_MAX_TEXTURE_EDGE,help=f'cap every texture at this base edge length, matching the Retail PS3 convention (default {RETAIL_PS3_MAX_TEXTURE_EDGE}; Retail ships the bulk at 256). Use 0 to keep PC resolution and rely on the zone budget alone')
+    for parser in (a,p):parser.add_argument('--unsupported-fx',choices=('omit','error'),default='omit',help='omit unsupported FX and exclusive dependencies; error keeps strict behavior')
+    for parser in (a,p):parser.add_argument('--shader-compilation',choices=('auto','prefer','off'),default='auto',help='auto: compile PC shaders to RSX for TechniqueSets without a native PS3 identity; prefer: also replace family substitutions with faithful compiled graphs; off: name binding only')
+    for parser in (a,p):parser.add_argument('--donor-catalog',default=None,help='techset-donors.json exported by the Emulator "techsets" command; matching TechniqueSets are transplanted byte-faithfully from retail PS3 data')
     ns=ap.parse_args(argv)
     try:
       if not MAP_NAME_RE.fullmatch(ns.map):
@@ -45,7 +48,7 @@ def main(argv=None):
         raise ValueError('--boot-isolation and --owner-aware-visual-graph are mutually exclusive')
       boot_isolation=bool(ns.boot_isolation)
       if ns.cmd=='analyze':
-        r=analyze_and_assemble(ns.pc_ff,ns.map,ns.iwd,ffmpeg=ns.ffmpeg,runtime_compatible=ns.runtime_compatible,boot_isolation=boot_isolation,gfxworld_resource_policy=ns.gfxworld_resource_policy,material_image_resource_policy=ns.material_image_resource_policy,sound_policy=ns.sound_policy);print(json.dumps({'passed':True,'source':dict(r.source.diagnostics),'assembly':dict(r.diagnostics)},indent=2,default=str));return 0
+        r=analyze_and_assemble(ns.pc_ff,ns.map,ns.iwd,ffmpeg=ns.ffmpeg,runtime_compatible=ns.runtime_compatible,boot_isolation=boot_isolation,gfxworld_resource_policy=ns.gfxworld_resource_policy,material_image_resource_policy=ns.material_image_resource_policy,sound_policy=ns.sound_policy,unsupported_fx_policy=ns.unsupported_fx,shader_compilation=ns.shader_compilation,donor_catalog=ns.donor_catalog);print(json.dumps({'passed':True,'source':dict(r.source.diagnostics),'assembly':dict(r.diagnostics)},indent=2,default=str));return 0
       cube=_read_json(ns.cubemap_evidence)
       budget=str(ns.ps3_zone_budget).strip().lower()
       if budget in ('off','none','0'):
@@ -56,7 +59,7 @@ def main(argv=None):
           raise ValueError('--ps3-zone-budget must be a positive byte count or "off"')
       if ns.image_budget_min_dimension<1:
         raise ValueError('--image-budget-min-dimension must be at least 1')
-      r=port_map(ns.pc_ff,ns.map,ns.iwd,ns.out,load_baseline=ns.load_baseline,pc_load_ff=ns.pc_load_ff,retail_load_reference=ns.ps3_load_reference,ffmpeg=ns.ffmpeg,cubemap_target_face_hashes=cube,runtime_compatible=ns.runtime_compatible,boot_isolation=boot_isolation,gfxworld_resource_policy=ns.gfxworld_resource_policy,material_image_resource_policy=ns.material_image_resource_policy,sound_policy=ns.sound_policy,unresolved_image_policy=ns.unresolved_image_policy,unresolved_material_policy=ns.unresolved_material_policy,primary_light_policy=ns.primary_light_policy,vertex_layer_policy=ns.gfxworld_vertex_layers,portal_policy=ns.gfxworld_portals,zone_budget_bytes=zone_budget,image_budget_min_dimension=ns.image_budget_min_dimension,texture_max_edge=ns.texture_max_edge)
+      r=port_map(ns.pc_ff,ns.map,ns.iwd,ns.out,load_baseline=ns.load_baseline,pc_load_ff=ns.pc_load_ff,retail_load_reference=ns.ps3_load_reference,ffmpeg=ns.ffmpeg,cubemap_target_face_hashes=cube,runtime_compatible=ns.runtime_compatible,boot_isolation=boot_isolation,gfxworld_resource_policy=ns.gfxworld_resource_policy,material_image_resource_policy=ns.material_image_resource_policy,sound_policy=ns.sound_policy,unsupported_fx_policy=ns.unsupported_fx,shader_compilation=ns.shader_compilation,donor_catalog=ns.donor_catalog,unresolved_image_policy=ns.unresolved_image_policy,unresolved_material_policy=ns.unresolved_material_policy,primary_light_policy=ns.primary_light_policy,vertex_layer_policy=ns.gfxworld_vertex_layers,portal_policy=ns.gfxworld_portals,zone_budget_bytes=zone_budget,image_budget_min_dimension=ns.image_budget_min_dimension,texture_max_edge=ns.texture_max_edge)
       print(json.dumps(r,indent=2,default=str))
       if not r.get('full_fidelity_passed') and not ns.allow_unproven_retail:return 2
       return 0

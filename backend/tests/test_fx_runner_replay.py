@@ -124,9 +124,55 @@ def test_runner_replay_fails_closed_without_consecutive_typed_target():
     )
 
 
+def test_mixed_reuse_binds_proven_aliases_and_new_run():
+    # mp_wmd_night regression: an owner mixing a reused (already-proven) alias
+    # with a new one previously paired the reused alias positionally with the
+    # preceding run and died with "conflicting typed targets".  The linker
+    # never re-serializes a target for a reused reference, so the
+    # preceding-run model applies to the NEW aliases only.
+    raw1=0x40000001+0x100
+    raw2=0x40000001+0x200
+    t1=_reference(100,0x2000,0x2100,'child/shared_smoke')
+    a=_reference(101,0x2100,0x2200,'owner/first',_element(0,raw1))
+    t2=_reference(102,0x2200,0x2300,'child/new_spark')
+    b=_reference(103,0x2300,0x2400,'owner/second',_element(0,raw1,raw2))
+    result=resolve_fx_runner_bindings('any_map',(t1,a,t2,b))
+    assert not result.failed_owners
+    assert [(row.owner_source_asset_index,row.serialized_pointer,row.target_source_asset_index)
+            for row in result.bindings]==[
+        (101,raw1,100),
+        (103,raw1,100),(103,raw2,102),
+    ],result.bindings
+    # The raw->target map stays consistent across owners.
+    assert result.target_asset_indices_by_raw=={raw1:100,raw2:102}
+
+
+def test_collect_mode_isolates_unprovable_owner():
+    refs=list(_nuked_runner_corridors())
+    broken=refs[4]
+    refs[4]=_reference(
+        broken.source_asset_index,broken.root_offset+1,
+        broken.physical_end_offset,broken.name,
+    )
+    result=resolve_fx_runner_bindings('any_map',refs,on_unprovable='collect')
+    # glass_large still binds; only the camera owner (whose corridor crosses
+    # the broken boundary) is reported, with no proof-state pollution.
+    assert [(row.serialized_pointer,row.target_source_asset_index) for row in result.bindings]==[
+        (0x4198F74D,310),(0x4198F74D,310),
+    ]
+    assert len(result.failed_owners)==1,result.failed_owners
+    row=result.failed_owners[0]
+    assert row['owner_source_asset_index']==332 and 'not physically contiguous' in row['reason']
+    # Default mode still stops the conversion outright.
+    _assert_value_error('not physically contiguous',
+                        lambda:resolve_fx_runner_bindings('any_map',refs))
+
+
 if __name__=='__main__':
     test_mp_nuked_runner_replay_is_topology_driven_and_complete()
     test_runner_replay_fails_closed_when_target_corridor_is_broken()
     test_runner_replay_fails_closed_when_alias_order_is_ambiguous()
     test_runner_replay_fails_closed_without_consecutive_typed_target()
+    test_mixed_reuse_binds_proven_aliases_and_new_run()
+    test_collect_mode_isolates_unprovable_owner()
     print('PASS test_fx_runner_replay')

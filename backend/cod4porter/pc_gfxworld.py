@@ -62,9 +62,10 @@ def _add(branches,z,name,start,end):
     ensure(z,start,end-start,name);branches.append(GfxBranch(name,start,end,sha(z[start:end])))
 
 
-def parse_gfxworld(z:bytes,map_name:str,clip_counts:Mapping[str,int])->GfxWorldReport:
+def parse_gfxworld(z:bytes,map_name:str,clip_counts:Mapping[str,int],*,structural_index=None)->GfxWorldReport:
     needle=map_name.encode('latin-1')+b'\0';roots=[];s=0
-    while True:
+    if structural_index is not None:roots=[structural_index.single_root(16)]
+    while structural_index is None:
         at=z.find(needle,s)
         if at<0:break
         s=at+1;r=at-PC_ROOT

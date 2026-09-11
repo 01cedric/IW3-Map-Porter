@@ -38,7 +38,12 @@ def read_profile(zone):
     if hashlib.sha256(zone).hexdigest() != profile['source_sha256']:
         from gui_revision import ui_identity
         identity = ui_identity(zone)
-        raise ValueError(f"{identity['label']} ({identity['zone_sha256'][:16]}): a matching menu relocation profile is required. Region and update labels cannot substitute for this profile. No output was written.")
+        raise ValueError(
+            f"{identity['label']} ({identity['zone_sha256'][:16]}): a matching menu relocation profile is required. "
+            "Region and update labels cannot substitute for this profile. No output was written. "
+            "To support this revision, capture a profile from its untouched ui_mp.ff with "
+            "tools/capture_ui_relocation_profile.py (see docs/REGIONAL_SUPPORT.md); the captured "
+            "profile is validated by byte-exact no-op replay before any edit is allowed.")
     return profile
 
 

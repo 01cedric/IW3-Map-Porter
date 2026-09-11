@@ -12,8 +12,10 @@ import numpy as np
 O_NAME, O_BASENAME = 0x00, 0x04
 O_INDEXCOUNT, O_INDICES = 0x10, 0x14
 O_SURFACECOUNT = 0x1C
+O_SKYSURFCOUNT, O_SKYSURFS = 0x24, 0x28
 O_VERTEXCOUNT, O_VERTICES = 0x34, 0x38
 O_LAYERS = 0x48
+O_SUNLIGHT = 0xD4
 O_MODELCOUNT, O_MODELS = 0x15C, 0x160
 O_MINS = 0x164
 O_DPVS = 0x250
@@ -97,6 +99,21 @@ def read_world(m, hdr):
             draws.append((cull, origin, axes, scale, model, refl, plight))
     w['smodels'] = draws
     w['mins'] = struct.unpack('>3f', M.m.read(hdr + O_MINS, 12)); w['maxs'] = struct.unpack('>3f', M.m.read(hdr + O_MINS + 12, 12))
+    # Sky surfaces: indices into the surface array (u32 each, exactly as the
+    # porter serialized them and Load_GfxWorld consumed them).
+    sky_count = M.u32(hdr + O_SKYSURFCOUNT); sky_ptr = M.u32(hdr + O_SKYSURFS)
+    w['sky_surface_indices'] = (
+        [int(x) for x in M.arr(sky_ptr, sky_count, '>u4')] if sky_count and sky_ptr else [])
+    # Sun: the linked GfxLight (color at +4, direction at +0x10); absent on
+    # worlds without a sunLight branch.
+    sun_ptr = M.u32(hdr + O_SUNLIGHT)
+    if sun_ptr:
+        color = [M.f32(sun_ptr + 4 + i * 4) for i in range(3)]
+        direction = [M.f32(sun_ptr + 0x10 + i * 4) for i in range(3)]
+        finite = all(abs(v) < 1e6 and v == v for v in color + direction)
+        w['sun'] = {'color': color, 'direction': direction} if finite else None
+    else:
+        w['sun'] = None
     return w
 
 

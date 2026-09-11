@@ -12,6 +12,8 @@ from .source_plan import CoreSourcePlan, analyze_core_source
 from .material_graph import build_material_graph,norm,sym,MaterialGraphPlan,PS3_DEFAULT_MATERIAL
 from .material_planning import serialized_image_pointer
 from .assets.external import ExternalTechniqueSetNode,ExternalMaterialNode,ExternalXModelNode
+from .assets.techset import TechsetEmissionRegistry
+from .material_graph import make_technique_node
 from .assets.image import ImageNode,ExternalImageNode,ImageResourcePolicy
 from .pc_image import image_asset_from_pc,parse_image_at
 from .assets.basic import RawFileNode,StringTableNode,LightDefNode,ExternalFxNode
@@ -173,6 +175,10 @@ def assemble_core_source(
     if isinstance(gfxworld_resource_policy,str):gfxworld_resource_policy=GfxWorldResourcePolicy(gfxworld_resource_policy)
     if isinstance(material_image_resource_policy,str):material_image_resource_policy=ImageResourcePolicy(material_image_resource_policy)
     if sound_policy not in ('omit','map-owned'):raise ValueError(f'unsupported sound policy {sound_policy!r}')
+    omission=core.fx_omission
+    omitted_indices=omission.asset_indices if omission is not None else set()
+    omitted_roots=omission.roots if omission is not None else set()
+    for ai in sorted(omitted_indices):disp.add(ai,DispositionKind.OMITTED,reason='unsupported FX dependency omitted from FastFile')
     # Compatibility fallbacks and the historical CP12 boot-isolation graph are separate
     # choices.  Generic callers get the complete owner-aware visual graph unless they opt into
     # the diagnostic isolation mode explicitly.
@@ -289,10 +295,11 @@ def assemble_core_source(
     tech_symbol_by_source={}
     existing_tech={} if boot_isolation else {n.name.casefold():n for n in mg.technique_nodes}
     emitted_tech_symbols=set()
+    _tech_registry=getattr(mg,'techset_registry',None) or TechsetEmissionRegistry()
     for binding in sorted(core.technique_bindings,key=lambda b:b.source_asset_index):
         node=existing_tech.get(binding.candidate_name.casefold())
         if node is None:
-            node=ExternalTechniqueSetNode(binding.candidate_name,sym('techset',binding.candidate_name),True)
+            node=make_technique_node(binding,_tech_registry)
             nodes.append(node);existing_tech[binding.candidate_name.casefold()]=node
         tech_symbol_by_source[binding.source_asset_index]=node.symbol
         if node.symbol in emitted_tech_symbols:
@@ -321,7 +328,7 @@ def assemble_core_source(
     # mp_getaway declares no top-level Images. Keep the full-mode exact path for other maps,
     # but never synthesize/promote image roots in CP12-A.
     exact_images=core.image_catalog.exact_name_by_asset_index
-    for a in (x for x in al.assets if x.type_id==PC['image']):
+    for a in (x for x in al.assets if x.type_id==PC['image'] and x.index not in omitted_indices):
         if boot_isolation:
             raise ValueError(f'CP12-A source Image XAsset #{a.index} needs an explicit top-level PS3 image policy')
         name=exact_images.get(a.index)
@@ -346,13 +353,18 @@ def assemble_core_source(
             ownership_candidate(node.symbol,child,f'material[{i}]',raw,x.material_handle_physical_offset+i*4,f"XModel '{x.model.name}' material slot {i}")
 
     # 4) FX + ImpactFX. Source-owned FX are emitted natively, name-only source FX remain explicit native/shared shells.
-    fx_symbols={x.source_asset_index:f'fx:{x.source_asset_index:04d}:{_safe(x.name)}' for x in core.fx_references}
-    fx_name_by_index={x.source_asset_index:x.name for x in core.fx_references}
-    fx_runner_resolution=resolve_fx_runner_bindings(core.map_name,core.fx_references,zone=zone,technique_sets=core.techniques)
+    fx_symbols={x.source_asset_index:f'fx:{x.source_asset_index:04d}:{_safe(x.name)}' for x in core.fx_references if x.source_asset_index not in omitted_indices}
+    fx_name_by_index={x.source_asset_index:x.name for x in core.fx_references if x.source_asset_index not in omitted_indices}
+    fx_runner_resolution=resolve_fx_runner_bindings(core.map_name,core.fx_references,zone=zone,technique_sets=core.techniques,on_unprovable='collect')
+    _unprovable_left={int(row['owner_source_asset_index']) for row in fx_runner_resolution.failed_owners}-set(omitted_indices)
+    if _unprovable_left:
+        raise ValueError('FX references remained unprovable outside the omission set: '+', '.join(
+            f"#{i}" for i in sorted(_unprovable_left)))
     fx_runner_target_by_raw=fx_runner_resolution.target_asset_indices_by_raw
     material_symbol_by_root={m.root_offset:runtime_material_symbols[norm(m.name).casefold()] for m in core.materials.fx_inline}
     fx_material_replay_raws=[]
     for x in core.fx_references:
+        if x.source_asset_index in omitted_indices:continue
         if not x.source_owned or x.graph is None:continue
         for e in x.graph.elements:
             if e.element_type>4:continue
@@ -367,13 +379,14 @@ def assemble_core_source(
     fx_material_root_by_raw=fx_material_resolution.target_material_roots_by_raw
     fx_source_packed_visuals=sum(
         v.kind is VisualKind.PACKED_UNRESOLVED
-        for ref in core.fx_references if ref.source_owned and ref.graph is not None
+        for ref in core.fx_references if ref.source_owned and ref.graph is not None and ref.source_asset_index not in omitted_indices
         for element in ref.graph.elements for v in element.visuals
     )
     fx_exact_packed_visuals=0;fx_exact_runner_references=0;fx_exact_material_references=0;fx_runtime_material_visuals=0;fx_runtime_null_visuals=0
     default_material_symbol=runtime_material_symbols.get('default')
     fx_visual_fallbacks=[]
     for x in core.fx_references:
+        if x.source_asset_index in omitted_indices:continue
         if x.source_owned:
             if x.graph is None:raise ValueError(f"owned FX '{x.name}' has no typed graph")
             packed_visual_symbols={};packed_visual_names={}
@@ -414,7 +427,7 @@ def assemble_core_source(
             node=OwnedFxNode(x.graph,material_symbol_by_root,fx_symbols[x.source_asset_index],
                 packed_visual_symbols_by_raw=packed_visual_symbols,
                 packed_visual_names_by_raw=packed_visual_names,
-                effect_names_by_raw={raw:fx_name_by_index[ai] for raw,ai in fx_runner_target_by_raw.items()},
+                effect_names_by_raw={raw:fx_name_by_index[ai] for raw,ai in fx_runner_target_by_raw.items() if ai in fx_name_by_index},
                 runtime_fallback_material_symbol=default_material_symbol,
                 allow_runtime_visual_fallback=runtime_compatible)
             for e in x.graph.elements:
@@ -441,6 +454,7 @@ def assemble_core_source(
         nodes.append(node);disp.emit(x.source_asset_index,node.symbol,AssetType.FX,reason)
     impacts=tuple(parse_impact_fx(zone,al))
     for x in impacts:
+        if omitted_indices:x=_dc_replace(x,fx_source_asset_indices=tuple(None if ai in omitted_indices else ai for ai in x.fx_source_asset_indices))
         node=ImpactFxNode(x,fx_symbols,f'impactfx:{x.source_asset_index:04d}:{_safe(x.name)}');nodes.append(node);disp.emit(x.source_asset_index,node.symbol,AssetType.IMPACTFX,'exact 396-entry ImpactFx graph')
 
     # 5) ComWorld boundary + LightDefs using exact Image identities.  In IW3 MP zones the
@@ -449,7 +463,7 @@ def assemble_core_source(
     com_assets=[a for a in al.assets if a.type_id==PC['comworld']]
     if len(com_assets)!=1:raise ValueError(f'expected one ComWorld XAsset, got {len(com_assets)}')
     com_expected=f'maps/mp/{core.map_name}.d3dbsp'
-    com=parse_comworld(zone,com_expected,core.gfxworld.primary_light_count)
+    com=parse_comworld(zone,com_expected,core.gfxworld.primary_light_count,structural_index=al.structural_index)
     packed_light_name_evidence={}
     packed_def_raw={l.def_name_pointer for l in com.primary_lights if decode_pc_pointer(l.def_name_pointer).kind=='packed'}
     inline_def_names={l.def_name for l in com.primary_lights if l.def_name}
@@ -675,7 +689,7 @@ def assemble_core_source(
     raw_hints={}
     table_by_index={t.source_asset_index:t for t in tables}
     xmodel_by_index={x.model.source_asset_index:x for x in core.xmodels}
-    fx_by_index={x.source_asset_index:x for x in core.fx_references}
+    fx_by_index={x.source_asset_index:x for x in core.fx_references if x.source_asset_index not in omitted_indices}
     def _material_end(rec):
         end=getattr(rec,'end_offset',None)
         if end is not None:return int(end)
@@ -725,6 +739,10 @@ def assemble_core_source(
                 if nx is not None:raw_hints[next_index]=nx.root_offset
         i=j
     raws=top_level_rawfiles(zone,al,root_hints_by_asset_index=raw_hints,packed_name_evidence=global_xstrings,runtime_compatible=runtime_compatible)
+    if omission is not None and omission.effect_names:
+        from .fx_script_omission import rewrite_scripts
+        raws,script_changes=rewrite_scripts(raws,omission.effect_names)
+        omission.report['script_changes']=script_changes
     raw_runtime_name_fallbacks=0
     for r in raws:
         shared_name_symbol=destination_table_xstring_symbols.get(r.name_pointer) if decode_pc_pointer(r.name_pointer).kind=='packed' else None
@@ -803,8 +821,26 @@ def assemble_core_source(
         lp=StandaloneLoadedPlan(ls,ls.name or staged_ls.asset_name,staged_ls.payload,staged_ls.format,staged_ls.sample_count,staged_ls.channels,staged_ls.sample_rate,staged_ls.duration_ms)
         symbol=f'loadedsound:{a.index:04d}:{_safe(lp.name or "unnamed")}';node=LoadedSoundAssetNode(lp,symbol);nodes.append(node);disp.emit(a.index,symbol,AssetType.LOADED_SOUND,'owned standalone LoadedSound converted to PS3 ID3/MP3')
 
+    # 8b) LocalizeEntries travel with the map so MPUI_/script string keys resolve
+    # on every regional installation.  Owned entries are parsed through the
+    # structural index (both fields are strings); packed headers stay external.
+    from .assets.localize import LocalizeEntryNode
+    _loc_index=getattr(al,'structural_index',None)
+    for a in (x for x in al.assets if x.type_id==PC['localize']):
+        if decode_pc_pointer(a.serialized_pointer).kind not in ('following','insert'):
+            disp.ext(a.index,'localize support asset; source header is packed/shared');continue
+        row=next((r for r in (_loc_index.rows(22) if _loc_index is not None else ()) if r['index']==a.index),None)
+        if row is None:raise ValueError(f'owned LocalizeEntry XAsset #{a.index} has no structural row')
+        value=_loc_index.pointer(row['root']);key=_loc_index.pointer(row['root']+4)
+        if not isinstance(key,str) or not key:raise ValueError(f'owned LocalizeEntry XAsset #{a.index} has no key string')
+        if value is None:value=''
+        if not isinstance(value,str):raise ValueError(f'owned LocalizeEntry {key!r} value is not a string')
+        symbol=f'localize:{a.index:04d}:{_safe(key)}'
+        nodes.append(LocalizeEntryNode(key,value,symbol))
+        disp.emit(a.index,symbol,AssetType.LOCALIZE,'owned LocalizeEntry serialized so the key resolves on any regional installation')
+
     # 9) Explicit unsupported/source-native families. Canonical full port refuses to guess custom gameplay/UI assets.
-    allowed_external={PC['xanimparts']:'XAnimParts are support/native assets only when explicitly shared',PC['ui_map']:'UI map support asset',PC['font']:'font support asset',PC['menulist']:'menu list support asset',PC['menu']:'menu support asset',PC['localize']:'localize support asset',PC['weapon']:'weapon support asset',PC['snddriverglobals']:'sound driver globals support asset',PC['aitype']:'AI type support asset',PC['mptype']:'MP type support asset',PC['character']:'character support asset',PC['xmodelalias']:'XModelAlias support asset'}
+    allowed_external={PC['xanimparts']:'XAnimParts are support/native assets only when explicitly shared',PC['ui_map']:'UI map support asset',PC['font']:'font support asset',PC['menulist']:'menu list support asset',PC['menu']:'menu support asset',PC['weapon']:'weapon support asset',PC['snddriverglobals']:'sound driver globals support asset',PC['aitype']:'AI type support asset',PC['mptype']:'MP type support asset',PC['character']:'character support asset',PC['xmodelalias']:'XModelAlias support asset'}
     for typ,reason in allowed_external.items():
         for a in (x for x in al.assets if x.type_id==typ):
             # A source-owned inline object in these unsupported families cannot be called native/shared without evidence.
@@ -879,11 +915,13 @@ def analyze_and_assemble(
     unresolved_material_policy:str='reference',
     primary_light_policy:str='source',
     vertex_layer_policy:str='source',
-    portal_policy:str='source',check_output_support:bool=False,
+    portal_policy:str='source',check_output_support:bool=False,structure_report_path:str|Path|None=None,unsupported_fx_policy:str='omit',
+    shader_compilation:str='auto',donor_catalog:str|Path|None=None,
 )->AssemblyResult:
     return assemble_core_source(
         analyze_core_source(pc_ff,map_name,iwd_paths,texture_library_directory=texture_library_directory,runtime_compatible=runtime_compatible,sound_policy=sound_policy,
-                            check_portal_policy=portal_policy if check_output_support else None),
+                            check_portal_policy=portal_policy if check_output_support else None,structure_report_path=structure_report_path,unsupported_fx_policy=unsupported_fx_policy,
+                            shader_compilation=shader_compilation,donor_catalog=donor_catalog),
         ffmpeg=ffmpeg,runtime_compatible=runtime_compatible,boot_isolation=boot_isolation,
         gfxworld_resource_policy=gfxworld_resource_policy,
         material_image_resource_policy=material_image_resource_policy,

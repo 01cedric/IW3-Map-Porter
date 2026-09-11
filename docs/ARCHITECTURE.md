@@ -180,6 +180,38 @@ and adaptations are in `IW4Studio-source.json`; the original MIT license is reta
 These reusable calculations do not establish compatibility of IW4 renderer bindings
 with CoD4's engine structures.
 
+## PC-to-RSX shader compilation
+
+`cod4porter/rsx` is the compiler stack: `d3d9.py` disassembles SM2/SM3 token
+streams exactly; `nv40.py` encodes and decodes RSX vertex/fragment microcode
+with the bit layouts mirrored from the vendored decoder; `translate.py` maps
+D3D9 IR onto RSX with register accounting (one input attribute and one
+constant per RSX instruction, scratch-register splitting, expansion of
+lrp/cmp/nrm/pow/sincos/matrix/texkill forms); `cgbinary.py` builds the Sony
+CgBinaryProgram container with parameter and runtime patch tables; and
+`interp.py`/`interp_np.py` execute both instruction sets so every translation
+is proven by differential execution before it can ship. `techset_parse.py`
+reads the complete PC technique graph through the structural reader's
+resolved pointers, `techset_compile.py` produces the 26-slot PS3 techset with
+translated declarations and argument tables, and `assets/techset.py`
+serializes it with the loader's block semantics (TEMP roots, LARGE children,
+INSERT shader aliases, content-hash dedup across techsets). `rsx/donor.py`
+adapts retail techsets extracted by the emulator-side `techsetcheck.py`,
+which also writes `rsx-calibration.json`: each layout assumption checked
+against real linked PS3 data, failing closed per rule.
+
+## Preview shader execution and FX simulation
+
+`gui_shader_preview.py` walks each linked material's real techset, patches
+its fragment program the way the console does (parameter defaults, then
+material/literal/code arguments) and executes the microcode vectorized over
+texture space with the material's decoded images; the baked RGBA replaces
+the diffuse preview and `material-rsx-report.json` records per-material
+stand-ins and blockers. `fx_simulation.py` walks linked FxEffectDef assets
+and writes deterministic sprite timelines (`fx-simulation.json`) that the
+desktop's `FxPlayback` renders as camera-facing billboards. Both layers fail
+per item, never per scene.
+
 ## Extending the project
 
 - For a new binary asset, add a typed source parser, destination node and focused

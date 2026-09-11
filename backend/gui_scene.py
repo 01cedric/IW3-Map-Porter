@@ -106,10 +106,28 @@ def export_scene(d, meta, output_dir, models=None, textures=None):
             entities.append(dict(id=i, classname=cn, targetname='', origin=list(origin), angles=list(angles), is_spawn=True,
                                  properties={'classname': cn, 'origin': ' '.join(map(str, origin))}))
     texture_rows = {str(i): textures[name] for i, name in enumerate(sorted(groups)) if textures and name in textures and name not in uv_missing}
+    fx_file = 'fx-simulation.json' if (Path(output_dir) / 'fx-simulation.json').is_file() else None
+    fx_placements_file = 'fx-placements.json' if (Path(output_dir) / 'fx-placements.json').is_file() else None
+    # Sky groups render unlit in the viewer; match on the group's material
+    # name (the '[missing ...]' fallback suffix does not change identity).
+    sky_names = {str(x).lstrip(',').casefold() for x in meta.get('sky_material_names', ())}
+    sky_groups = [i for i, name in enumerate(sorted(groups))
+                  if name.split(' [', 1)[0].lstrip(',').casefold() in sky_names] if sky_names else []
+    lighting = None
+    sun = meta.get('sun')
+    if sun and sun.get('color') and sun.get('direction'):
+        color = [max(0.0, min(4.0, float(v))) for v in sun['color'][:3]]
+        direction = [float(v) for v in sun['direction'][:3]]
+        # The linked sun colour + a proportional ambient term; preview
+        # lighting only, no zone bytes are derived from this.
+        lighting = {'sun_color': color, 'sun_direction': direction,
+                    'ambient': [min(1.0, 0.30 + 0.25 * v) for v in color]}
     scene = dict(schema='iw3-desktop-scene/v2', mesh_file=mesh_path.name, name=meta.get('name', ''), textures=texture_rows,
                  entities=entities, triangles=triangles, material_groups=len(groups),
+                 fx_file=fx_file, fx_placements_file=fx_placements_file,
+                 sky_groups=sky_groups, lighting=lighting,
                  static_models_missing=missing, mins=pos.min(axis=0).tolist(), maxs=pos.max(axis=0).tolist(),
-                 rendering='%d material groups use diffuse textures; source details and missing textures are in material-rsx-report.json. No RSX shader execution or FX simulation.' % len(texture_rows))
+                 rendering='%d material groups textured; RSX fragment programs are executed in software for material previews (see material-rsx-report.json). FX playback uses the deterministic preview simulation in fx-simulation.json.' % len(texture_rows))
     scene_path = Path(output_dir) / 'world.scene.json'
     scene_path.write_text(json.dumps(scene, indent=2, ensure_ascii=True), encoding='utf-8')
     return scene_path

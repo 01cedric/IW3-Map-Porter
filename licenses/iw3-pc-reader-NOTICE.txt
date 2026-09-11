@@ -1,0 +1,3 @@
+IW3 PC structural reader: GPL-3.0.
+Adapted OpenAssetTools definitions and load rules by Jan Laupetin and contributors.
+Corresponding source, upstream inputs, notices and license: backend/tools/iw3_pc_reader/.

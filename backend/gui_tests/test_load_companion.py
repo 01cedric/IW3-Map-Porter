@@ -1,5 +1,6 @@
-import tempfile,unittest
+import sys,tempfile,unittest
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from gui_inputs import load_companion
 
 class CompanionTests(unittest.TestCase):

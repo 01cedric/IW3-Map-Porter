@@ -6,7 +6,7 @@ from typing import Mapping,Sequence
 from .backend.v4_ffio import FastFileDocument,XAssetList,read_pc_fastfile,parse_xasset_list
 from .backend.v4_iwd import IwdImageEntry,IwdSoundEntry,inspect_iwds
 from .pc_technique import ROOT as PC_TECHNIQUE_ROOT_SIZE,TechniqueSet,top_level_technique_sets
-from .technique_binding import TechniqueBinding,bind_all
+from .technique_binding import TechniqueBinding,TechniqueEvidence,bind_all,bind_technique
 from .pc_xmodel import PcXModelIntermediate,parse_all_xmodels,resolve_skeleton_and_surface_reuse,resolve_xmodel_materials
 from .pc_material import attach_xmodel_inline_materials_and_tails,parse_material_at
 from .pc_fx import OwnedFxGraph,FxReference,top_level_fx
@@ -44,6 +44,7 @@ class CoreSourcePlan:
     iwd_images:Mapping[str,IwdImageEntry]
     iwd_sounds:tuple[IwdSoundEntry,...]
     diagnostics:Mapping[str,object]=field(default_factory=dict)
+    fx_omission:object|None=None
 
 
 def _unique_materials(rows:Sequence[MaterialRecord])->tuple[MaterialRecord,...]:
@@ -63,7 +64,7 @@ def _replace_resolved(groups:Sequence[Sequence[MaterialRecord]])->tuple[tuple[Ma
 
 def build_material_universe(zone:bytes,asset_list:XAssetList,techniques:Sequence[TechniqueSet],bindings:Sequence[TechniqueBinding],xmodels:Sequence[PcXModelIntermediate],xmodel_inline:Sequence[MaterialRecord],gfxworld:GfxWorldReport,fx_graphs:Sequence[OwnedFxGraph],*,runtime_compatible:bool=False,clipmap:ClipMap|None=None)->MaterialUniverse:
     gfx_mats=tuple(parse_material_at(zone,r)[0] for r in gfxworld.full.inline_material_roots)
-    fx_roots=sorted({r for fx in fx_graphs for r in fx.inline_material_roots})
+    fx_roots=sorted({r for fx in fx_graphs for r in fx.inline_material_roots}|set(getattr(asset_list.structural_index,'additional_material_roots',())))
     fx_mats=tuple(parse_material_at(zone,r)[0] for r in fx_roots)
     nested_roots={m.root_offset for m in xmodel_inline}|{m.root_offset for m in gfx_mats}|{m.root_offset for m in fx_mats}
     material_assets=sorted((a for a in asset_list.assets if a.type_id==0x04),key=lambda a:a.index)
@@ -92,7 +93,9 @@ def build_material_universe(zone:bytes,asset_list:XAssetList,techniques:Sequence
     image_replay=replay_xmodel_image_aliases(xmodels,tuple(xm),all_unique,xres,pc_zone=zone)
     from .pc_xmodel import apply_replayed_material_handles
     apply_replayed_material_handles(xmodels, xres, image_replay['handle_bases'])
-    gfx_image_replay=replay_gfxworld_image_aliases(zone,gfxworld,tuple(gfxm),all_unique)
+    gfx_image_replay=replay_gfxworld_image_aliases(
+        zone,gfxworld,tuple(gfxm),all_unique,
+        structural_index=getattr(asset_list,'structural_index',None))
     top_image_replay=(
         replay_top_level_material_image_xstrings(zone,asset_list,clipmap,techniques,top)
         if clipmap is not None else
@@ -133,30 +136,150 @@ def build_material_universe(zone:bytes,asset_list:XAssetList,techniques:Sequence
         ai=source_index_by_root.get(m.root_offset)
         if m.name.startswith(','):external.append((ai,m))
         else:material_rows.append((ai,m))
+    quarantine=[] if runtime_compatible else None
     planned=plan_materials(
         material_rows,asset_list,techniques,bindings,all_unique,
         allow_runtime_neutral=runtime_compatible,resolved_image_proof=image,
+        quarantine=quarantine,
     )
-    return MaterialUniverse(top,tuple(xm),tuple(gfxm),tuple(fxm),all_unique,frozenset(nested_roots),image,planned,tuple(external),xres)
+    return MaterialUniverse(top,tuple(xm),tuple(gfxm),tuple(fxm),all_unique,frozenset(nested_roots),image,planned,tuple(external),xres,tuple(quarantine or ()))
+
+
+def _upgrade_bindings(zone,index,techniques,bindings,*,policy='auto',donor=None):
+    """PC-to-RSX shader compilation for TechniqueSets the console cannot resolve.
+
+    Every binding the availability ladder left UNSUPPORTED is parsed completely
+    (techniques, passes, declarations, shader bytecode, argument tables) and
+    translated to an owned PS3 TechniqueSet with RSX microcode.  A techset the
+    compiler cannot prove stays UNSUPPORTED with the exact blocking construct
+    appended, and the FX-omission policy then applies to it as before.
+    """
+    from .rsx.techset_parse import PcTechsetParseError,parse_full_techniqueset
+    from .rsx.techset_compile import TechsetCompileError,compile_techniqueset
+    from .rsx.d3d9 import D3d9Error
+    from .rsx.donor import DonorCatalogError
+    from .rsx.translate import RsxTranslationError
+    upgraded=[];report={'compiled':[],'failed':[],'donor_transplants':[]}
+    for technique,binding in zip(techniques,bindings):
+        prefer_upgrade=(policy=='prefer' and binding.evidence is TechniqueEvidence.PS3_FAMILY_SUBSTITUTION)
+        if binding.can_bind_native and not prefer_upgrade:
+            upgraded.append(binding);continue
+        if getattr(technique,'shared',False):
+            # A ',name' reference carries no PC technique payload in this zone;
+            # "compiling" its empty shell would fabricate a techset that renders
+            # nothing while reporting success.  It stays on its current path
+            # (UNSUPPORTED -> the omission policy, or the kept substitution).
+            upgraded.append(binding)
+            report['failed'].append({
+                'name':binding.candidate_name,'source_asset_index':binding.source_asset_index,
+                'kept_family_substitution':prefer_upgrade,
+                'error':'shared ,reference carries no PC technique payload to compile',
+            })
+            continue
+        source_name=technique.ps3_reference_candidate
+        if donor is not None and source_name in donor:
+            try:
+                compiled=donor.techniqueset(source_name,source_asset_index=binding.source_asset_index)
+            except DonorCatalogError as error:
+                # A stale or corrupt donor entry must not abort the whole port;
+                # the compile path below still applies to this techset.
+                report['failed'].append({
+                    'name':binding.candidate_name,'source_asset_index':binding.source_asset_index,
+                    'kept_family_substitution':False,'donor_error':True,
+                    'error':f'donor transplant failed: {error}',
+                })
+            else:
+                upgraded.append(replace(
+                    binding,candidate_name=compiled.name,
+                    evidence=TechniqueEvidence.RETAIL_DONOR,can_bind_native=True,
+                    reason='Transplanted byte-faithfully from a retail PS3 zone via the donor catalog.',
+                    compiled=compiled))
+                report['donor_transplants'].append({'name':compiled.name,
+                    'source_asset_index':binding.source_asset_index})
+                continue
+        try:
+            full=parse_full_techniqueset(zone,index.pointer,technique)
+            compiled=compile_techniqueset(full)
+            if not any(slot is not None for slot in compiled.slots):
+                raise TechsetCompileError(
+                    'no PC technique maps into the 26 PS3 slots; an empty owned '
+                    'techset would render nothing')
+            upgraded.append(replace(
+                binding,candidate_name=compiled.name,
+                evidence=TechniqueEvidence.COMPILED_RSX,can_bind_native=True,
+                reason=('No native PS3 TechniqueSet exists; the PC shader graph was compiled '
+                        'to RSX microcode and the generated zone owns the TechniqueSet.'),
+                compiled=compiled))
+            report['compiled'].append({
+                'name':compiled.name,'source_asset_index':binding.source_asset_index,
+                'estimate_bytes':compiled.serialized_size_estimate(),
+                'dropped_pc_slots':list(compiled.dropped_pc_slots),
+                'notes':list(compiled.notes)[:20],
+            })
+        except (PcTechsetParseError,TechsetCompileError,D3d9Error,RsxTranslationError) as error:
+            if prefer_upgrade:
+                # The family substitution stays in place; record why fidelity
+                # could not be raised further.
+                upgraded.append(binding)
+            else:
+                upgraded.append(replace(
+                    binding,reason=binding.reason+f' PC-to-RSX compilation also failed: {error}'))
+            report['failed'].append({
+                'name':binding.candidate_name,'source_asset_index':binding.source_asset_index,
+                'kept_family_substitution':prefer_upgrade,
+                'error':str(error),
+            })
+    return tuple(upgraded),report
 
 
 def analyze_core_source(
     pc_ff:str|Path,map_name:str,iwd_paths:Sequence[str|Path]=(),*,texture_library_directory:str|Path|None=None,
-    runtime_compatible:bool=False,sound_policy:str='omit',check_portal_policy:str|None=None,
+    runtime_compatible:bool=False,sound_policy:str='omit',check_portal_policy:str|None=None,structure_report_path:str|Path|None=None,unsupported_fx_policy:str='omit',
+    shader_compilation:str='auto',donor_catalog:str|Path|None=None,
 )->CoreSourcePlan:
     if sound_policy not in ('omit','map-owned'):
         raise ValueError(f'unsupported sound policy {sound_policy!r}')
     doc=read_pc_fastfile(pc_ff);al=parse_xasset_list(doc.zone,'pc')
-    clip=parse_clipmap(doc.zone,map_name)
+    from .pc_structure import read_structure
+    index=read_structure(doc.zone,report_path=structure_report_path)
+    al=replace(al,structural_index=index)
+    clip=parse_clipmap(doc.zone,map_name,structural_index=index)
     clip_counts={'planes':len(clip.planes),'submodels':len(clip.submodels),'static_models':len(clip.static_models),'dynamic_models':len(clip.dyn_models),'dynamic_brushes':len(clip.dyn_brushes)}
-    gfx=parse_gfxworld(doc.zone,map_name,clip_counts)
+    gfx=parse_gfxworld(doc.zone,map_name,clip_counts,structural_index=index)
     if check_portal_policy=='source' and gfx.full.portal_count:
         from .gfxworld_portals import resolve_portals
         resolve_portals(doc.zone,gfx)
-    techniques=tuple(top_level_technique_sets(doc.zone,al));bindings=tuple(bind_all(techniques))
+    if shader_compilation not in ('auto','prefer','off'):
+        raise ValueError(f'unsupported shader_compilation policy {shader_compilation!r}')
+    techniques=tuple(top_level_technique_sets(doc.zone,al));all_bindings=tuple(bind_technique(t) for t in techniques)
+    compile_report={'policy':shader_compilation,'compiled':[],'failed':[],'donor_transplants':[]}
+    donor=None
+    if donor_catalog:
+        from .rsx.donor import load_donor_catalog
+        donor=load_donor_catalog(donor_catalog)
+        compile_report['donor_catalog']={'path':str(donor_catalog),'techsets':len(donor.names())}
+    if shader_compilation in ('auto','prefer'):
+        all_bindings,compiled_rows=_upgrade_bindings(doc.zone,index,techniques,all_bindings,
+                                                     policy=shader_compilation,donor=donor)
+        compile_report.update(compiled_rows)
+    from .fx_omission import plan_omissions
+    from .pc_fx import resolve_fx_runner_bindings
+    # Probe every owner's packed runner/impact references against source
+    # topology BEFORE planning omissions: an owner whose references cannot be
+    # proven routes into the same per-effect omission policy as an
+    # unsupported shader, instead of stopping the whole conversion.
+    fx_refs=tuple(top_level_fx(doc.zone,replace(al,structural_index=index.with_all_roots()),excluded_ranges=((gfx.root_offset,gfx.full.physical_end),)))
+    runner_probe=resolve_fx_runner_bindings(map_name,fx_refs,zone=doc.zone,technique_sets=techniques,on_unprovable='collect')
+    unresolvable={int(row['root_offset']):row['reason'] for row in runner_probe.failed_owners}
+    omission=plan_omissions(index,techniques,all_bindings,unsupported_fx_policy,unresolvable_fx=unresolvable)
+    bindings=tuple(b for t,b in zip(techniques,all_bindings) if t.root_offset not in omission.roots)
+    if any(not b.can_bind_native for b in bindings):raise ValueError('Unsupported shader survived FX omission')
+    index.omitted_roots=omission.roots
+    index.additional_material_roots=omission.report.get('retained_shared_material_roots',[])
     xmodels=parse_all_xmodels(doc.zone,al);x_inline=attach_xmodel_inline_materials_and_tails(doc.zone,xmodels);reuse=resolve_skeleton_and_surface_reuse(doc.zone,xmodels)
-    fx_refs=tuple(top_level_fx(doc.zone,al,excluded_ranges=((gfx.root_offset,gfx.full.physical_end),)));fx=tuple(x.graph for x in fx_refs if x.source_owned and x.graph is not None)
+    fx=tuple(x.graph for x in fx_refs if x.source_owned and x.graph is not None and x.root_offset not in omission.roots)
     images,sounds=inspect_iwds(iwd_paths,include_sounds=sound_policy!='omit') if iwd_paths else ({},[])
+    images={k:v for k,v in images.items() if v.image.name.replace('\\','/').lstrip(',').casefold() not in omission.image_names}
     materials=build_material_universe(doc.zone,al,techniques,bindings,xmodels,x_inline,gfx,fx,runtime_compatible=runtime_compatible,clipmap=clip)
     texture_library_files=[];library_selected=0
     if texture_library_directory:
@@ -203,6 +326,8 @@ def analyze_core_source(
         for row in exact_xmodel_unresolved
     })
     diag={
+        'pc_structure':index.summary(),'unsupported_fx':omission.report,
+        'shader_compilation':compile_report,
         'script_strings':len(al.script_strings),'xassets':len(al.assets),'asset_type_counts':type_counts,'asset_type_runs':type_runs,'techniques':len(techniques),'xmodels':len(xmodels),
         'fx_xassets':len(fx_refs),'owned_fx_graphs':len(fx),'shared_fx':sum(not x.source_owned for x in fx_refs),'materials_total':len(materials.all_unique),'materials_top_level':len(materials.top_level),
         'materials_xmodel_inline':len(materials.xmodel_inline),'materials_gfxworld_inline':len(materials.gfxworld_inline),'materials_fx_inline':len(materials.fx_inline),
@@ -252,4 +377,4 @@ def analyze_core_source(
         'texture_library':{'archives':[str(p) for p in texture_library_files],'selected_images':library_selected},
         'iwd_images':len(images),'iwd_sounds':len(sounds),'xmodel_reuse':reuse,
     }
-    return CoreSourcePlan(doc,al,map_name,techniques,bindings,tuple(xmodels),fx_refs,fx,clip,gfx,materials,image_catalog,phys_presets,phys_resolution,sound_catalog,phys_sound_resolution,images,tuple(sounds),diag)
+    return CoreSourcePlan(doc,al,map_name,techniques,bindings,tuple(xmodels),fx_refs,fx,clip,gfx,materials,image_catalog,phys_presets,phys_resolution,sound_catalog,phys_sound_resolution,images,tuple(sounds),diag,omission)

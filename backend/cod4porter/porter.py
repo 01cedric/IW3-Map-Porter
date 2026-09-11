@@ -192,6 +192,27 @@ def _native_dependency_manifest(a:AssemblyResult)->dict:
             'in_bundled_retail_catalog':name.casefold() in audited,
         })
     unique_techsets={x['required_ps3_name'].casefold():x for x in techsets}
+    from .assets.techset import OwnedTechniqueSetNode
+    owned_techsets=[]
+    for node in sorted((n for n in a.plan.assets if isinstance(n,OwnedTechniqueSetNode)),
+                       key=lambda n:n.name.casefold()):
+        compiled=node.compiled
+        binding=bindings.get(node.name.casefold())
+        # Without a planned-material binding the artifact itself says how it
+        # was produced: donor transplants carry their retail provenance note.
+        fallback_evidence=('ps3_retail_donor_transplant'
+                          if any(str(note).startswith('transplanted from retail')
+                                 for note in compiled.notes)
+                          else 'compiled_pc_rsx_translation')
+        owned_techsets.append({
+            'name':node.name,
+            'source_name':binding.source_name if binding else None,
+            'evidence':binding.evidence.value if binding else fallback_evidence,
+            'owned_techniques':sum(1 for t in compiled.slots if t is not None),
+            'estimate_bytes':compiled.serialized_size_estimate(),
+            'dropped_pc_slots':list(compiled.dropped_pc_slots),
+            'notes':list(compiled.notes)[:20],
+        })
     # Derive this from the nodes that were actually serialized, not from the PC source
     # inventory: --unresolved-material-policy default replaces a Material the console
     # cannot own with a ,default reference, and reporting the original name would
@@ -212,6 +233,8 @@ def _native_dependency_manifest(a:AssemblyResult)->dict:
             'with_bundled_retail_evidence':proven,
             'without_direct_evidence':len(unique_techsets)-proven,
             'entries':sorted(unique_techsets.values(),key=lambda x:x['required_ps3_name'].casefold()),
+            'owned_in_zone':len(owned_techsets),
+            'owned_entries':owned_techsets,
         },
         'external_materials':materials,
         'external_images':images,
@@ -284,7 +307,9 @@ def build_conversion_closure(a:AssemblyResult,b:MainBuildResult,readback:Mapping
     unproven_cubes=len(source_cubes) if source_cubes else 0
     if source_cubes!=output_cubes:block.append(f'Cubemap conversion closure: source={sorted(source_cubes)} output={sorted(output_cubes)}')
 
-    owned_fx=sum(x.source_owned for x in core.fx_references);shared_fx=len(core.fx_references)-owned_fx
+    omitted_indices=core.fx_omission.asset_indices if core.fx_omission is not None else set()
+    retained_fx=[x for x in core.fx_references if x.source_asset_index not in omitted_indices]
+    owned_fx=sum(x.source_owned for x in retained_fx);shared_fx=len(retained_fx)-owned_fx
     exact_fx=len(_results_of(b,'fx.owned:'));exact_shared=len(_results_of(b,'fx.external:'))
     source_fx_visuals=int(a.diagnostics.get('fx_source_packed_visuals',0) or 0)
     exact_fx_visuals=int(a.diagnostics.get('fx_exact_packed_visuals',0) or 0)
@@ -292,7 +317,7 @@ def build_conversion_closure(a:AssemblyResult,b:MainBuildResult,readback:Mapping
     light_src=sum(x.type_id==0x11 for x in al.assets);light_out=len(_results_of(b,'lightdef:'))
     raw_src=sum(x.type_id==0x1F for x in al.assets);raw_out=len(_results_of(b,'rawfile:'))
     st_src=sum(x.type_id==0x20 for x in al.assets);st_out=len(_results_of(b,'stringtable:'))
-    source_tech=len(core.technique_bindings);exact_tech=sum(x.source_type_id==0x05 for x in a.plan.dispositions)
+    source_tech=len(core.technique_bindings);exact_tech=sum(x.source_type_id==0x05 and x.source_index not in omitted_indices for x in a.plan.dispositions)
 
     xm_src_v=sum(s.vertex_count for x in core.xmodels for s in x.model.surfaces);xm_src_t=sum(s.triangle_count for x in core.xmodels for s in x.model.surfaces)
     xm_rows=_results_of(b,'xmodel:');xm_out_v=sum(int(x['vertex_count']) for x in xm_rows);xm_out_t=sum(int(x['triangle_count']) for x in xm_rows)
@@ -510,6 +535,8 @@ def port_map(
     primary_light_policy:str='source',
     vertex_layer_policy:str='source',
     portal_policy:str='source',
+    unsupported_fx_policy:str='omit',
+    shader_compilation:str='auto',donor_catalog=None,
     zone_budget_bytes:int|None=DEFAULT_ZONE_BUDGET_BYTES,
     image_budget_min_dimension:int=DEFAULT_MIN_BASE_DIMENSION,
     texture_max_edge:int=RETAIL_PS3_MAX_TEXTURE_EDGE,
@@ -536,7 +563,8 @@ def port_map(
         unresolved_material_policy=unresolved_material_policy,
         primary_light_policy=primary_light_policy,
         vertex_layer_policy=vertex_layer_policy,
-        portal_policy=portal_policy,check_output_support=True,
+        portal_policy=portal_policy,check_output_support=True,structure_report_path=output_dir/f'{map_name}.pc-structure.json',unsupported_fx_policy=unsupported_fx_policy,
+        shader_compilation=shader_compilation,donor_catalog=donor_catalog,
     )
     from .visual_diagnostics import source_pixel_coverage
     visual_coverage = source_pixel_coverage(assembly.source)
@@ -903,7 +931,9 @@ def port_map(
     if load_evidence:evidence_docs.append(load_evidence)
     gate=evaluate_full_fidelity(*evidence_docs)
     report={
-      'map':map_name,
+      'map':map_name,'unsupported_fx':assembly.source.fx_omission.report if assembly.source.fx_omission is not None else {},
+      'shader_compilation':dict(assembly.source.diagnostics.get('shader_compilation',{})),
+      'material_graph':dict(assembly.material_graph.diagnostics),
       'execution_mode':'boot-isolation' if boot_isolation else ('owner-aware-visual-candidate' if runtime_compatible else 'full-port'),
       'hardware_tested':False,'runtime_compatible':runtime_compatible,'boot_isolation':bool(boot_isolation),
       'gfxworld_resource_policy':gfxworld_resource_policy.value,'material_image_resource_policy':material_image_resource_policy.value,'sound_policy':sound_policy,'pc_fastfile':str(Path(pc_ff).resolve()),'iwd_paths':[str(Path(x).resolve()) for x in iwd_paths],
@@ -916,7 +946,7 @@ def port_map(
           for p in assembly.source.materials.planned_owned],
       'ps3_native_dependencies':native_dependencies,'source_pixel_coverage':visual_coverage,
       'independent_readback':rb_dict,'roundtrip':roundtrip,'source_diagnostics':dict(assembly.source.diagnostics),'assembly_diagnostics':dict(assembly.diagnostics),'closure':asdict(closure),'FidelityClosure':closure.fidelity_section(),'known_profile_comparison':_known_profile_comparison(assembly,closure),'load':load_report,
-      'evidence_documents':evidence_docs,'full_fidelity_gate':gate,'full_fidelity_passed':bool(gate['full_fidelity_passed'] and closure.passed and gfx_resource_validation['passed'] and gfx_resource_validation['complete'] and material_image_validation['passed'] and global_deferred_validation['passed'] and image_fidelity_validation['passed'] and zone_allocation['within_budget'] and platform_state_validation['passed'] and platform_state_validation['retail_exact_passed'] and (load_report is None or load_report.get('load_full_fidelity',True))),
+      'evidence_documents':evidence_docs,'full_fidelity_gate':gate,'full_fidelity_passed':bool(not (assembly.source.fx_omission and assembly.source.fx_omission.roots) and gate['full_fidelity_passed'] and closure.passed and gfx_resource_validation['passed'] and gfx_resource_validation['complete'] and material_image_validation['passed'] and global_deferred_validation['passed'] and image_fidelity_validation['passed'] and zone_allocation['within_budget'] and platform_state_validation['passed'] and platform_state_validation['retail_exact_passed'] and (load_report is None or load_report.get('load_full_fidelity',True))),
     }
     report_path=output_dir/f'{map_name}.python-port-report.json';report_path.write_text(json.dumps(report,indent=2,default=str),encoding='utf-8')
     report['report_path']=str(report_path.resolve())

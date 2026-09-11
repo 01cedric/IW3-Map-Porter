@@ -161,6 +161,14 @@ def _parse_rawfile_at(zone:bytes,root:int,asset_index:int,packed_name_evidence:M
 
 def top_level_rawfiles(zone:bytes,asset_list:XAssetList,*,root_hints_by_asset_index:Mapping[int,int]|None=None,
         packed_name_evidence:Mapping[int,str]|None=None,runtime_compatible:bool=False)->tuple[SourceRawFile,...]:
+    if asset_list.structural_index is not None:
+        index=asset_list.structural_index;out=[]
+        for row in index.rows(PC_RAWFILE):
+            r=row['root'];n=_u32(zone,r+4);p=index.pointer(r+8)
+            payload=zone[p:p+n] if p is not None else b''
+            if len(payload)!=n:raise ValueError('RawFile payload length differs')
+            out.append(SourceRawFile(row['index'],r,row['name'],payload,row['end'],False,_u32(zone,r)))
+        return tuple(out)
     assets=sorted((a for a in asset_list.assets if a.type_id==PC_RAWFILE),key=lambda a:a.index)
     if not assets:return ()
     packed=[a for a in assets if decode_pc_pointer(a.serialized_pointer).kind=='packed']
@@ -202,6 +210,15 @@ def top_level_rawfiles(zone:bytes,asset_list:XAssetList,*,root_hints_by_asset_in
     return tuple(SourceRawFile(a.index,r.root,r.name.replace('\\','/'),r.payload,r.end+1,False) for a,r in zip(assets,runs[0]))
 
 def top_level_stringtables(zone:bytes,asset_list:XAssetList,global_packed_xstrings:Mapping[int,str]|None=None,*,root_hints:Sequence[int]=(),runtime_compatible:bool=False)->tuple[SourceStringTable,...]:
+    if asset_list.structural_index is not None:
+        index=asset_list.structural_index;out=[]
+        for row in index.rows(PC_STRINGTABLE):
+            r=row['root'];cols=_u32(zone,r+4);rows=_u32(zone,r+8);p=index.pointer(r+12)
+            pointers=tuple(_u32(zone,p+i*4) for i in range(cols*rows))
+            values=tuple(index.pointer(p+i*4) for i in range(cols*rows))
+            packed=sum(decode_pc_pointer(raw).kind=='packed' for raw in pointers)
+            out.append(SourceStringTable(row['index'],r,row['name'],cols,rows,values,packed,0,packed,row['end'],pointers))
+        return tuple(out)
     assets=sorted((a for a in asset_list.assets if a.type_id==PC_STRINGTABLE),key=lambda a:a.index)
     if not assets:return ()
     packed_headers=[a for a in assets if decode_pc_pointer(a.serialized_pointer).kind=='packed']
@@ -379,6 +396,14 @@ def packed_xstring_evidence_from_tables(tables:Sequence[SourceStringTable])->dic
 
 def top_level_lightdefs(zone:bytes,asset_list:XAssetList,image_name_by_source_asset_index:Mapping[int,str],*,
         root_hints:Sequence[int]=(),packed_name_evidence:Mapping[int,str]|None=None,runtime_compatible:bool=False)->tuple[SourceLightDef,...]:
+    if asset_list.structural_index is not None:
+        index=asset_list.structural_index;images={r['root']:r['index'] for r in index.rows(PC_IMAGE)};out=[]
+        for row in index.rows(PC_LIGHTDEF):
+            r=row['root'];image=index.pointer(r+4);kind=decode_pc_pointer(_u32(zone,r+4)).kind
+            name=index.pointer(image+0x20) if image is not None else None
+            has_resource=index.pointer(image+4) is not None if image is not None else None
+            out.append(SourceLightDef(row['index'],r,row['name'],zone[r+8],int.from_bytes(zone[r+12:r+16],'little',signed=True),name,images.get(image),kind,has_resource))
+        return tuple(out)
     assets=sorted((a for a in asset_list.assets if a.type_id==PC_LIGHTDEF),key=lambda a:a.index)
     if not assets:return ()
     if any(decode_pc_pointer(a.serialized_pointer).kind not in ('following','insert') for a in assets):

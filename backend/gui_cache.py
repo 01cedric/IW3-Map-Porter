@@ -74,6 +74,13 @@ def restore(key, output):
 def store(key, output, report):
     output = Path(output); scene = json.loads((output / 'world.scene.json').read_text())
     names = {'world.scene.json', scene['mesh_file'], 'material-rsx-report.json', report.name, *scene.get('textures', {}).values()}
+    # The scene names its FX timeline and ambient-placement documents; a
+    # cache-hit reopen must restore them too, or FX playback / weather
+    # silently disappears on every reopen.
+    for key_name in ('fx_file', 'fx_placements_file'):
+        extra = scene.get(key_name)
+        if isinstance(extra, str) and extra and (output / extra).is_file():
+            names.add(extra)
     root = cache_root(); root.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix='.pending-', dir=root))
     try:

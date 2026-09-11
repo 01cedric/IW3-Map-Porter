@@ -7,9 +7,19 @@ from typing import Mapping,Sequence
 from .assets.external import ExternalTechniqueSetNode,ExternalMaterialNode
 from .assets.image import ImageNode,ExternalImageNode,ImageResourcePolicy,from_iwi,neutral_bc1_image
 from .assets.material import MaterialNode
+from .assets.techset import OwnedTechniqueSetNode,TechsetEmissionRegistry
 from .backend.v4_iwd import IwdImageEntry
 from .material_planning import MaterialUniverse,PlannedMaterial
 from .technique_binding import TechniqueBinding
+
+
+def make_technique_node(binding,registry):
+    """The zone node serving one technique binding: owned when the binding
+    carries a compiled/donor PS3 TechniqueSet, a ,name reference otherwise."""
+    name=binding.candidate_name
+    if getattr(binding,'owns_ps3_techset',False):
+        return OwnedTechniqueSetNode(binding.compiled,sym('techset',name),registry)
+    return ExternalTechniqueSetNode(name,sym('techset',name),True)
 
 
 # Shared Material names owned by the zones that stay loaded while a PS3 map runs.
@@ -28,7 +38,7 @@ def sym(prefix:str,name:str)->str:return f'{prefix}:{hashlib.sha1(name.casefold(
 
 @dataclass(frozen=True)
 class MaterialGraphPlan:
-    technique_nodes:tuple[ExternalTechniqueSetNode,...]
+    technique_nodes:tuple[object,...]
     image_nodes:tuple[object,...]
     material_nodes:tuple[object,...]
     technique_symbol_by_candidate:Mapping[str,str]
@@ -36,6 +46,7 @@ class MaterialGraphPlan:
     material_symbol_by_name:Mapping[str,str]
     material_symbol_by_source_asset_index:Mapping[int,str]
     diagnostics:Mapping[str,object]
+    techset_registry:object=None
 
 
 def _planned_signature(p:PlannedMaterial)->tuple:
@@ -75,12 +86,14 @@ def build_material_graph(universe:MaterialUniverse,iwd_images:Mapping[str,IwdIma
         raise ValueError("unresolved_image_policy must be 'reference' or 'neutral'")
     if unresolved_material_policy not in ('reference','default'):
         raise ValueError("unresolved_material_policy must be 'reference' or 'default'")
-    # TechniqueSet nodes are shared/native PS3 references; one node per proven candidate name.
+    # TechniqueSet nodes: native/shared references stay ,name shells; compiled or
+    # donor bindings own their full PS3 TechniqueSet in this zone.
+    techset_registry=TechsetEmissionRegistry()
     tech_by={}
     for p in universe.planned_owned:
         c=p.technique.candidate_name
         if c.casefold() not in tech_by:
-            tech_by[c.casefold()]=ExternalTechniqueSetNode(c,sym('techset',c),True)
+            tech_by[c.casefold()]=make_technique_node(p.technique,techset_registry)
     technique_symbols={node.name.casefold():node.symbol for node in tech_by.values()}
 
     # Enforce one material semantic identity per normalized name.
@@ -178,15 +191,23 @@ def build_material_graph(universe:MaterialUniverse,iwd_images:Mapping[str,IwdIma
             # clone of $default on every map.)
             rebound_materials.append(name);continue
         symbol=sym('material.ext',name);material_nodes.append(ExternalMaterialNode(name,symbol,True));material_symbols[k]=symbol;external+=1
+    # Quarantined materials: planning failed per material (any error class) and
+    # the universe collected them instead of aborting.  They take the same
+    # hardware-proven ,$default closure as CP12-A boot isolation, one surface
+    # at a time.  A same-named healthy identity, if one exists, keeps priority.
+    quarantined_rows=tuple(getattr(universe,'quarantined_materials',()) or ())
+    quarantined_names=[norm(str(row['name'])) for row in quarantined_rows]
     # Runtime-compatible mode also uses ,default for unresolved FX/other asset visuals.
     # Do not make its existence depend on XModel fallback debt: once exact XModel closure
     # reached zero, that accidental dependency made the owner-aware graph fail before write.
-    if include_runtime_default_material or rebound_materials or universe.xmodel_material_resolution.get('runtime_fallbacks',0):
+    if include_runtime_default_material or rebound_materials or quarantined_names or universe.xmodel_material_resolution.get('runtime_fallbacks',0):
         k='default'
         if k not in material_symbols:
             name=PS3_DEFAULT_MATERIAL;symbol=sym('material.ext',name);material_nodes.append(ExternalMaterialNode(name,symbol,True));material_symbols[k]=symbol;external+=1
     for name in rebound_materials:
         material_symbols[norm(name).casefold()]=material_symbols['default']
+    for name in quarantined_names:
+        material_symbols.setdefault(norm(name).casefold(),material_symbols['default'])
     for x in universe.top_level:
         k=norm(x.material.name).casefold()
         if k not in material_symbols:raise ValueError(f"Top-level Material '{x.material.name}' has no destination symbol")
@@ -198,4 +219,4 @@ def build_material_graph(universe:MaterialUniverse,iwd_images:Mapping[str,IwdIma
     delayed_images=sum(bool(node.image.resource) and node.resource_policy is ImageResourcePolicy.RETAIL_DELAYED for node in owned_image_nodes)
     return MaterialGraphPlan(tuple(tech_by.values()),tuple(image_nodes),tuple(material_nodes),
         {node.name.casefold():node.symbol for node in tech_by.values()},image_symbols,material_symbols,source_symbols,
-        {'owned_materials':owned,'external_materials':external,'owned_images':owned_images,'external_images':external_images,'technique_nodes':len(tech_by),'xmodel_material_runtime_fallbacks':universe.xmodel_material_resolution.get('runtime_fallbacks',0),'neutral_image_fallbacks':universe.image_proof.get('neutral_fallback_count',0),'image_resource_policy':image_resource_policy.value,'unresolved_image_policy':unresolved_image_policy,'unresolved_material_policy':unresolved_material_policy,'materials_rebound_to_default':len(rebound_materials),'materials_rebound_to_default_names':tuple(sorted(rebound_materials)),'unresolved_neutral_images':unresolved_neutral,'unresolved_neutral_image_names':tuple(sorted(unresolved_names)),'declared_image_resource_bytes':declared_bytes,'planned_embedded_image_resource_bytes':embedded_bytes,'planned_omitted_image_resource_bytes':declared_bytes-embedded_bytes,'planned_delayed_images':delayed_images,'balanced_split_block3_bytes':balanced_bins[0],'balanced_split_block6_bytes':balanced_bins[1]})
+        {'owned_materials':owned,'external_materials':external,'owned_images':owned_images,'external_images':external_images,'technique_nodes':len(tech_by),'xmodel_material_runtime_fallbacks':universe.xmodel_material_resolution.get('runtime_fallbacks',0),'neutral_image_fallbacks':universe.image_proof.get('neutral_fallback_count',0),'image_resource_policy':image_resource_policy.value,'unresolved_image_policy':unresolved_image_policy,'unresolved_material_policy':unresolved_material_policy,'materials_rebound_to_default':len(rebound_materials),'materials_rebound_to_default_names':tuple(sorted(rebound_materials)),'materials_quarantined':len(quarantined_rows),'materials_quarantined_rows':tuple({'name':str(r['name']),'reason':str(r['reason'])} for r in quarantined_rows),'unresolved_neutral_images':unresolved_neutral,'unresolved_neutral_image_names':tuple(sorted(unresolved_names)),'declared_image_resource_bytes':declared_bytes,'planned_embedded_image_resource_bytes':embedded_bytes,'planned_omitted_image_resource_bytes':declared_bytes-embedded_bytes,'planned_delayed_images':delayed_images,'balanced_split_block3_bytes':balanced_bins[0],'balanced_split_block6_bytes':balanced_bins[1]},techset_registry)

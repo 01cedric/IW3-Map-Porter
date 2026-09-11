@@ -74,6 +74,8 @@ class TechniqueEvidence(str,Enum):
     PS3_FAMILY_SUBSTITUTION='ps3_available_family_substitution'
     PC_SHARED='pc_shared_support_reference'
     CANONICAL_STOCK='canonical_iw3_stock_family'
+    COMPILED_RSX='compiled_pc_rsx_translation'
+    RETAIL_DONOR='ps3_retail_donor_transplant'
     UNSUPPORTED='unsupported_custom'
 
 @dataclass(frozen=True)
@@ -86,6 +88,13 @@ class TechniqueBinding:
     reason:str
     source_asset_index:int=-1
     substitution:str=''
+    # COMPILED_RSX: the CompiledTechniqueSet artifact the zone will own.
+    # RETAIL_DONOR: the donor payload record extracted from a real PS3 zone.
+    compiled:object=None
+
+    @property
+    def owns_ps3_techset(self)->bool:
+        return self.evidence in (TechniqueEvidence.COMPILED_RSX,TechniqueEvidence.RETAIL_DONOR) and self.compiled is not None
 
 _EFFECT=re.compile(r'^(?:(?:m|w)c?_)?effect(?:_(?:zfeather|falloff|add|nofog|eyeoffset))*$',re.I)
 _DIST=re.compile(r'^(?:wc?_)?distortion_scale(?:_zfeather)?$',re.I)
@@ -114,8 +123,11 @@ def _drop_detail(name:str)->str:
 
 # Havana owns sm2/mc_l_sm_a0c0, sm2/mc_l_hsm_a0c0 and their SM3 twins.
 # Their complete roots and inline shader payloads verify a0 as a source family.
-# Accepting it does not declare a native equivalent: availability, material constants
-# and samplers still gate the separately reported base-family substitution.
+# Accepting it does not declare a native equivalent: availability and the
+# material-constant contract still gate the separately reported base-family
+# substitution.  (Sampler tables are gated only for owned compiled/donor
+# techsets, whose argument tables ship with the artifact; the retail contract
+# catalog records constants only.)
 # An IW3 lighting technique ends in a fixed channel order: <a|b|r|t>0c0 [d0] [n0] [s0].
 _CHANNELS=re.compile(r'^(?P<head>.*[abrt]0c0)(?P<d>d0)?(?P<n>n0)?(?P<s>s0)?$')
 
@@ -364,7 +376,9 @@ def bind_all(items:Iterable[TechniqueSet])->tuple[TechniqueBinding,...]:
             f'{len(names)} PC TechniqueSet name(s) have no PS3 equivalent in the measured '
             'availability catalog (cod4porter/reference/ps3_technique_availability.json): '
             +', '.join(names[:30])+('...' if len(names)>30 else '')
-            +'. Add the installation zone that owns them with tools/ps3_technique_catalog.py.'
+            +'. Parsing succeeded. Add a PS3 support zone only if it actually contains a matching '
+            'technique, or let the PC-to-RSX shader compiler own the TechniqueSet (shader_compilation=auto); '
+            'this call binds names only and performs no compilation.'
         )
     return out
 

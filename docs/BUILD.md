@@ -49,4 +49,4 @@ console tests are separate from a successful build.
 - `docs`: usage, implementation and compatibility notes.
 
 `VERSION` controls application and package version numbers. Update it when
-changing application behavior; this source cleanup retains 22.1.21.
+changing application behavior. Current release: 22.1.23.

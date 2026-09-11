@@ -167,6 +167,48 @@ def _brush(z,r,sbase,ebase,side_count,edge_count,box=False):
     elif not box and ep.kind!='null':raise ValueError('brush edge not packed/null')
     mats=tuple(i16(z,r+0x24+j*2) for j in range(6));adj=tuple(i16(z,r+0x34+j*2) for j in range(6));ec=tuple(z[r+0x40+j] for j in range(6))
     return Brush(v3(z,r),v3(z,r+0x10),i32(z,r+0xc),first,non,mats,edge,adj,ec)
+def _structural_pointer(index,field,label):
+    try:return index.pointer(field)
+    except ValueError as error:raise ValueError(f'{label}: {error}') from error
+def _verified_array_start(index,field,walk,label):
+    """The structural reader's resolved target for an owned array pointer must
+    equal the sequential walk position; a mismatch means the two independent
+    readings of the same stream have diverged and nothing after it is safe."""
+    value=_structural_pointer(index,field,label)
+    if value is None:return walk
+    if value!=walk:raise ValueError(f'{label} walk drift: sequential 0x{walk:X} != structurally resolved 0x{value:X}')
+    return walk
+def _brush_exact(z,r,index,sides_phys,edges_phys,side_count,edge_count,box=False):
+    """Per-brush pointer identity from the structural reader's exact targets.
+
+    The min-over-all-brushes base inference was poisonable: one stale pointer
+    on an unused-adjacency brush shifted the base and made every healthy
+    brush overflow ('brush edge range', mp_salvage2).  Here each pointer field
+    resolves independently through the reader's allocation map."""
+    non=u32(z,r+0x1c);first=-1
+    if non:
+        target=_structural_pointer(index,r+0x20,'brush side pointer')
+        if not isinstance(target,int):raise ValueError('brush side pointer null with sides')
+        off=target-sides_phys
+        if off<0 or off%0xc:raise ValueError('brush side pointer')
+        first=off//0xc
+        if first>side_count-non:raise ValueError('brush side range')
+    edge=-1
+    ep=decode_pc_pointer(u32(z,r+0x30));ec=tuple(z[r+0x40+j] for j in range(6))
+    if ep.kind=='packed':
+        target=_structural_pointer(index,r+0x30,'brush edge pointer')
+        off=target-edges_phys if isinstance(target,int) else None
+        if off is not None and 0<=off<=edge_count:edge=off
+        elif not any(ec):
+            # The engine reads baseAdjacentSide only through the six per-axis
+            # edge counts.  With all of them zero the pointer is dead weight
+            # from the PC compiler; it serializes as the array base exactly
+            # like a null edge, instead of poisoning the conversion.
+            edge=-1
+        else:raise ValueError('brush edge range')
+    elif not box and ep.kind!='null':raise ValueError('brush edge not packed/null')
+    mats=tuple(i16(z,r+0x24+j*2) for j in range(6));adj=tuple(i16(z,r+0x34+j*2) for j in range(6))
+    return Brush(v3(z,r),v3(z,r+0x10),i32(z,r+0xc),first,non,mats,edge,adj,ec)
 def _dyn(z,o,n,kind):
     out=[]
     for j in range(n):
@@ -293,15 +335,17 @@ def resolve_dynent_owned_phys_aliases(clip:ClipMap,raw_values)->dict[int,DynEntO
         raise ValueError(f'DynEnt PhysPreset alias basis is not unique: targets={len(targets)} candidates={len(valid)}')
     return valid[0][1]
 
-def parse_clipmap(z:bytes,map_name:str)->ClipMap:
-    r=find_root(z);pcnt=count(u32(z,r+8),1,500000,'planes');smc=count(u32(z,r+0x10),0,100000,'static models');mc=count(u32(z,r+0x18),1,20000,'materials');sc=count(u32(z,r+0x20),1,1000000,'brush sides');ec=count(u32(z,r+0x28),0,20000000,'brush edges');nc=count(u32(z,r+0x30),1,1000000,'nodes');lc=count(u32(z,r+0x38),1,1000000,'leaves');lnc=count(u32(z,r+0x40),1,1000000,'leaf nodes');rlc=count(u32(z,r+0x48),0,20000000,'root leaf brushes');lsc=count(u32(z,r+0x50),0,20000000,'leaf surfaces')
+def parse_clipmap(z:bytes,map_name:str,*,structural_index=None)->ClipMap:
+    r=structural_index.single_root(10,11) if structural_index is not None else find_root(z);pcnt=count(u32(z,r+8),1,500000,'planes');smc=count(u32(z,r+0x10),0,100000,'static models');mc=count(u32(z,r+0x18),1,20000,'materials');sc=count(u32(z,r+0x20),1,1000000,'brush sides');ec=count(u32(z,r+0x28),0,20000000,'brush edges');nc=count(u32(z,r+0x30),1,1000000,'nodes');lc=count(u32(z,r+0x38),1,1000000,'leaves');lnc=count(u32(z,r+0x40),1,1000000,'leaf nodes');rlc=count(u32(z,r+0x48),0,20000000,'root leaf brushes');lsc=count(u32(z,r+0x50),0,20000000,'leaf surfaces')
     if lsc:raise ValueError('ClipMap leaf surfaces not zero')
     vc=count(u32(z,r+0x58),0,20000000,'vertices');tc=count(i32(z,r+0x60),0,20000000,'triangles');bc=count(i32(z,r+0x6c),0,20000000,'borders');partc=count(i32(z,r+0x74),0,20000000,'partitions');ac=count(i32(z,r+0x7c),0,20000000,'aabbs');subc=count(u32(z,r+0x84),1,100000,'submodels');brushc=u16(z,r+0x8c);srcclusters=count(i32(z,r+0x94),1,1000000,'clusters');srcbytes=count(i32(z,r+0x98),0,100000000,'cluster bytes');vised=i32(z,r+0xa0)
     if vised not in (0,1):raise ValueError('vised')
-    dmc=u16(z,r+0xf4);dbc=u16(z,r+0xf6);checksum=u32(z,r+0x118);pbase=packed(u32(z,r+0xc),'planes');pphys=locate_planes(z,pcnt);planes=tuple(Plane(v3(z,pphys+j*0x14),f32(z,pphys+j*0x14+0xc),z[pphys+j*0x14+0x10],z[pphys+j*0x14+0x11]) for j in range(pcnt));cur=r+ROOT
+    dmc=u16(z,r+0xf4);dbc=u16(z,r+0xf6);checksum=u32(z,r+0x118);pbase=packed(u32(z,r+0xc),'planes');pphys=structural_index.pointer(r+0xc) if structural_index is not None else locate_planes(z,pcnt);planes=tuple(Plane(v3(z,pphys+j*0x14),f32(z,pphys+j*0x14+0xc),z[pphys+j*0x14+0x10],z[pphys+j*0x14+0x11]) for j in range(pcnt));cur=r+ROOT
     sms=[]
     for j in range(smc):q=cur+j*0x50;sms.append(StaticModel(u16(z,q),u32(z,q+4),v3(z,q+8),matrix3(z,q+0x14),v3(z,q+0x38),v3(z,q+0x44)))
     cur+=smc*0x50;mats=tuple(Material(fixed_string(z,cur+j*0x48,64),i32(z,cur+j*0x48+0x40),i32(z,cur+j*0x48+0x44)) for j in range(mc));cur+=mc*0x48
+    sides_walk=cur
+    if structural_index is not None:_verified_array_start(structural_index,r+0x24,sides_walk,'ClipMap brushsides')
     sides=[]
     for j in range(sc):
         q=cur+j*0xc;p=packed(u32(z,q),f'side {j} plane')
@@ -309,21 +353,37 @@ def parse_clipmap(z:bytes,map_name:str)->ClipMap:
         pi=(p.offset-pbase.offset)//0x14
         if pi>=pcnt:raise ValueError('side plane index')
         sides.append(BrushSide(pi,u32(z,q+4),i16(z,q+8),z[q+0xa]))
-    cur+=sc*0xc;edges=z[cur:cur+ec];cur+=ec;nodes=[]
+    cur+=sc*0xc;edges_walk=cur
+    if structural_index is not None:_verified_array_start(structural_index,r+0x2c,edges_walk,'ClipMap brushEdges')
+    edges=z[cur:cur+ec];cur+=ec;nodes=[]
     for j in range(nc):
         q=cur+j*8;p=packed(u32(z,q),f'node {j} plane')
         if p.block!=pbase.block or p.offset<pbase.offset or (p.offset-pbase.offset)%0x14:raise ValueError('node plane')
         nodes.append(Node((p.offset-pbase.offset)//0x14,i16(z,q+4),i16(z,q+6)))
     cur+=nc*8;leaves=tuple(_leaf(z,cur+j*0x2c) for j in range(lc));cur+=lc*0x2c;maxcl=max((x.cluster for x in leaves),default=-1)
     if any(x.cluster<-1 for x in leaves):raise ValueError('leaf cluster below -1')
-    clusters=max(srcclusters,maxcl+1);clbytes=max(srcbytes,(clusters+7)//8);rootbrush=tuple(u16(z,cur+j*2) for j in range(rlc));cur+=rlc*2;lnroot=cur;lbbase=_infer_root_leaf_base(z,cur,lnc);leafnodes=[];pending=[]
+    clusters=max(srcclusters,maxcl+1);clbytes=max(srcbytes,(clusters+7)//8);rootbrush_walk=cur
+    if structural_index is not None:_verified_array_start(structural_index,r+0x4c,rootbrush_walk,'ClipMap leafbrushes')
+    rootbrush=tuple(u16(z,cur+j*2) for j in range(rlc));cur+=rlc*2;lnroot=cur
+    if structural_index is not None:
+        try:lbbase=_infer_root_leaf_base(z,cur,lnc)
+        except ValueError:lbbase=0
+    else:lbbase=_infer_root_leaf_base(z,cur,lnc)
+    leafnodes=[];pending=[]
     for j in range(lnc):
         q=lnroot+j*0x14;axis=z[q];n=i16(z,q+2);contents=i32(z,q+4)
         if n>0:
             p=decode_pc_pointer(u32(z,q+8))
             if p.kind=='packed':
-                if not lbbase or p.offset<lbbase or (p.offset-lbbase)%2:raise ValueError('leaf brush packed')
-                start=(p.offset-lbbase)//2
+                if structural_index is not None:
+                    target=_structural_pointer(structural_index,q+8,'leaf brush pointer')
+                    if not isinstance(target,int):raise ValueError('leaf brush packed')
+                    off=target-rootbrush_walk
+                    if off<0 or off%2:raise ValueError('leaf brush packed')
+                    start=off//2
+                else:
+                    if not lbbase or p.offset<lbbase or (p.offset-lbbase)%2:raise ValueError('leaf brush packed')
+                    start=(p.offset-lbbase)//2
                 if start>rlc-n:raise ValueError('leaf brush root range')
                 leafnodes.append(LeafBrushNode(axis,n,contents,0,0,0,0,'packed_root',start,rootbrush[start:start+n]))
             elif p.kind in ('following','insert'):
@@ -333,15 +393,41 @@ def parse_clipmap(z:bytes,map_name:str)->ClipMap:
     cur+=lnc*0x14
     for idx,n in pending:
         vals=tuple(u16(z,cur+j*2) for j in range(n));cur+=n*2;o=leafnodes[idx];leafnodes[idx]=LeafBrushNode(o.axis,o.count,o.contents,o.distance,o.range,o.front,o.back,o.storage,o.root_start,vals)
-    verts=tuple(v3(z,cur+j*0xc) for j in range(vc));cur+=vc*0xc;tic=tc*3;tris=tuple(u16(z,cur+j*2) for j in range(tic));cur+=tic*2;walkbytes=((tic+31)//32)*4;walk=z[cur:cur+walkbytes];cur+=walkbytes;borders=tuple(Border(v3(z,cur+j*0x1c),f32(z,cur+j*0x1c+0xc),f32(z,cur+j*0x1c+0x10),f32(z,cur+j*0x1c+0x14),f32(z,cur+j*0x1c+0x18)) for j in range(bc));cur+=bc*0x1c;bbase=_infer_border_base(z,cur,partc);parts=[]
+    verts=tuple(v3(z,cur+j*0xc) for j in range(vc));cur+=vc*0xc;tic=tc*3;tris=tuple(u16(z,cur+j*2) for j in range(tic));cur+=tic*2;walkbytes=((tic+31)//32)*4;walk=z[cur:cur+walkbytes];cur+=walkbytes;borders_walk=cur
+    if structural_index is not None:_verified_array_start(structural_index,r+0x70,borders_walk,'ClipMap borders')
+    borders=tuple(Border(v3(z,cur+j*0x1c),f32(z,cur+j*0x1c+0xc),f32(z,cur+j*0x1c+0x10),f32(z,cur+j*0x1c+0x14),f32(z,cur+j*0x1c+0x18)) for j in range(bc));cur+=bc*0x1c
+    if structural_index is not None:
+        try:bbase=_infer_border_base(z,cur,partc)
+        except ValueError:bbase=0
+    else:bbase=_infer_border_base(z,cur,partc)
+    parts=[]
     for j in range(partc):
         q=cur+j*0xc;t=z[q];bn=z[q+1];first=i32(z,q+4);fb=0
         if bn:
-            p=packed(u32(z,q+8),'partition borders')
-            if p.offset<bbase or (p.offset-bbase)%0x1c:raise ValueError('partition border')
-            fb=(p.offset-bbase)//0x1c
+            if structural_index is not None:
+                target=_structural_pointer(structural_index,q+8,'partition borders')
+                if not isinstance(target,int):raise ValueError('partition border')
+                off=target-borders_walk
+                if off<0 or off%0x1c:raise ValueError('partition border')
+                fb=off//0x1c
+            else:
+                p=packed(u32(z,q+8),'partition borders')
+                if p.offset<bbase or (p.offset-bbase)%0x1c:raise ValueError('partition border')
+                fb=(p.offset-bbase)//0x1c
         parts.append(Partition(t,bn,first,fb))
-    cur+=partc*0xc;aabbs=tuple(Aabb(v3(z,cur+j*0x20),v3(z,cur+j*0x20+0xc),u16(z,cur+j*0x20+0x18),u16(z,cur+j*0x20+0x1a),i32(z,cur+j*0x20+0x1c)) for j in range(ac));cur+=ac*0x20;subs=tuple(_submodel(z,cur+j*0x48) for j in range(subc));cur+=subc*0x48;sbase,ebase=_infer_brush_bases(z,cur,brushc);brushes=tuple(_brush(z,cur+j*0x50,sbase,ebase,sc,ec) for j in range(brushc));cur+=brushc*0x50;srcvis=z[cur:cur+srcclusters*srcbytes];cur+=srcclusters*srcbytes;expanded=clusters!=srcclusters or clbytes!=srcbytes
+    cur+=partc*0xc;aabbs=tuple(Aabb(v3(z,cur+j*0x20),v3(z,cur+j*0x20+0xc),u16(z,cur+j*0x20+0x18),u16(z,cur+j*0x20+0x1a),i32(z,cur+j*0x20+0x1c)) for j in range(ac));cur+=ac*0x20;subs=tuple(_submodel(z,cur+j*0x48) for j in range(subc));cur+=subc*0x48
+    if structural_index is not None:
+        _verified_array_start(structural_index,r+0x90,cur,'ClipMap brushes')
+        # The B4-space bases feed only the DynEntDef certification below; a
+        # poisoned inference there fails its own consistency checks and the
+        # certification simply declines instead of stopping the conversion.
+        try:sbase,ebase=_infer_brush_bases(z,cur,brushc)
+        except ValueError:sbase=ebase=0
+        brushes=tuple(_brush_exact(z,cur+j*0x50,structural_index,sides_walk,edges_walk,sc,ec) for j in range(brushc))
+    else:
+        sbase,ebase=_infer_brush_bases(z,cur,brushc)
+        brushes=tuple(_brush(z,cur+j*0x50,sbase,ebase,sc,ec) for j in range(brushc))
+    cur+=brushc*0x50;srcvis=z[cur:cur+srcclusters*srcbytes];cur+=srcclusters*srcbytes;expanded=clusters!=srcclusters or clbytes!=srcbytes
     if expanded:
         vis=bytearray(b'\xff'*(clusters*clbytes))
         for j in range(srcclusters):vis[j*clbytes:j*clbytes+srcbytes]=srcvis[j*srcbytes:(j+1)*srcbytes]
@@ -351,7 +437,9 @@ def parse_clipmap(z:bytes,map_name:str)->ClipMap:
     if ep.kind not in ('following','insert'):raise ValueError('MapEnts not inline')
     ent=maproot+0xc;ensure(z,ent,alloc,'MapEnts allocation');zero=z.find(b'\0',ent,ent+alloc)
     if zero<0:raise ValueError('MapEnts no NUL')
-    text=z[ent:zero].decode('latin-1');cur=ent+alloc;boxbrush=_brush(z,cur,sbase,ebase,sc,ec,True);cur+=0x50;dynm=_dyn(z,cur,dmc,'model');cur+=dmc*0x60;dynb=_dyn(z,cur,dbc,'brush');cur+=dbc*0x60;boxmodel=_submodel(z,r+0xac)
+    text=z[ent:zero].decode('latin-1');cur=ent+alloc
+    boxbrush=(_brush_exact(z,cur,structural_index,sides_walk,edges_walk,sc,ec,True)
+              if structural_index is not None else _brush(z,cur,sbase,ebase,sc,ec,True));cur+=0x50;dynm=_dyn(z,cur,dmc,'model');cur+=dmc*0x60;dynb=_dyn(z,cur,dbc,'brush');cur+=dbc*0x60;boxmodel=_submodel(z,r+0xac)
     model_load_base,brush_load_base,owned_load_cursor,load_evidence=_dynent_definition_loadstream_bases(
         side_base=sbase,edge_base=ebase,side_count=sc,edge_count=ec,node_count=nc,
         leaf_count=lc,root_leaf_base=lbbase,root_leaf_count=rlc,leaf_node_count=lnc,

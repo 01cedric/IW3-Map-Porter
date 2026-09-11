@@ -68,7 +68,8 @@ def draw_array_base(zone, report, material_replay):
     16-byte alignment used when writing PS3 world vertices. Source layer bytes
     also advance B4; PS3 moves the expanded layer stream to another block.
     """
-    if not material_replay.get('topology_target_count', 0):
+    if (not material_replay.get('topology_target_count', 0)
+            and not material_replay.get('structural_matches', 0)):
         raise ValueError('Shared draw-model replay needs the exact GfxWorld material B4 anchor')
     u32=lambda p:struct.unpack_from('<I',zone,p)[0]
     u16=lambda p:struct.unpack_from('<H',zone,p)[0]

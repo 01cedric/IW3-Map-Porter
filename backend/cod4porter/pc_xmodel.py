@@ -134,7 +134,9 @@ def parse_xmodel(zone:bytes,root:int)->PcXModelIntermediate:
 
 
 def parse_all_xmodels(zone:bytes,asset_list:XAssetList|None=None)->list[PcXModelIntermediate]:
-    xs=[parse_xmodel(zone,r) for r in scan_xmodel_roots(zone)]
+    index=asset_list.structural_index if asset_list is not None else None
+    roots=[row['root'] for row in index.rows(3)] if index is not None else scan_xmodel_roots(zone)
+    xs=[parse_xmodel(zone,r) for r in roots]
     _resolve_vertex_index(zone,xs)
     if asset_list is not None:
         source=[a for a in asset_list.assets if a.type_id==3]

@@ -22,6 +22,13 @@ public sealed class MapEntity
     [JsonIgnore] public string Label => $"#{Id} · {Classname}" + (Targetname.Length > 0 ? " · " + Targetname : "") + (HasPosition ? "" : " [no position]");
 }
 
+public sealed class SceneLighting
+{
+    public double[]? SunColor { get; set; }
+    public double[]? SunDirection { get; set; }
+    public double[]? Ambient { get; set; }
+}
+
 public sealed class SceneDocument
 {
     public string Schema { get; set; } = "";
@@ -33,7 +40,38 @@ public sealed class SceneDocument
     public double[] Maxs { get; set; } = [1, 1, 1];
     public string Rendering { get; set; } = "";
     public Dictionary<string, string> Textures { get; set; } = [];
+    public string? FxFile { get; set; }
+    public string? FxPlacementsFile { get; set; }
+    public List<int> SkyGroups { get; set; } = [];
+    public SceneLighting? Lighting { get; set; }
+    [JsonIgnore] public string Folder { get; private set; } = "";
     [JsonIgnore] public Model3DGroup Geometry { get; private set; } = new();
+
+    private static Color ChannelColor(double[]? rgb, byte fallback)
+    {
+        if (rgb is not { Length: 3 } || !rgb.All(double.IsFinite)) return Color.FromRgb(fallback, fallback, fallback);
+        static byte C(double v) => (byte)Math.Round(Math.Clamp(v, 0.0, 1.0) * 255.0);
+        return Color.FromRgb(C(rgb[0]), C(rgb[1]), C(rgb[2]));
+    }
+
+    private static Vector3D? SunTravelDirection(double[]? towardSun)
+    {
+        // The zone's GfxLight direction points toward the sun (the shader L
+        // vector); WPF wants the direction the light travels, so negate.
+        if (towardSun is not { Length: 3 } || !towardSun.All(double.IsFinite)) return null;
+        var travel = new Vector3D(-towardSun[0], -towardSun[1], -towardSun[2]);
+        return travel.LengthSquared < 1e-9 ? null : travel;
+    }
+
+    private static Material UnlitMaterial(Brush brush)
+    {
+        // Sky surfaces are pre-lit content: black diffuse (ignores scene
+        // lights) plus the texture as emission renders them at full colour.
+        var group = new MaterialGroup();
+        group.Children.Add(new DiffuseMaterial(Brushes.Black));
+        group.Children.Add(new EmissiveMaterial(brush));
+        return group;
+    }
 
     public static SceneDocument Load(string metadataPath)
     {
@@ -44,15 +82,22 @@ public sealed class SceneDocument
         if (doc.Mins.Length != 3 || doc.Maxs.Length != 3 || !doc.Mins.Concat(doc.Maxs).All(double.IsFinite))
             throw new InvalidDataException("Invalid scene bounds.");
         var folder = Path.GetDirectoryName(Path.GetFullPath(metadataPath))!;
+        doc.Folder = folder;
         if (Path.GetFileName(doc.MeshFile) != doc.MeshFile) throw new InvalidDataException("The mesh file must be alongside the metadata.");
         using var reader = new BinaryReader(File.OpenRead(Path.Combine(folder, doc.MeshFile)), Encoding.UTF8);
         if (!reader.ReadBytes(8).SequenceEqual(Encoding.ASCII.GetBytes(withUv ? "IW3SCN2\0" : "IW3SCN1\0"))) throw new InvalidDataException("Invalid mesh header.");
         var groups = reader.ReadUInt32();
         if (groups > 65536) throw new InvalidDataException("Too many material groups.");
         var root = new Model3DGroup();
-        root.Children.Add(new AmbientLight(Color.FromRgb(145, 145, 145)));
-        root.Children.Add(new DirectionalLight(Colors.White, new Vector3D(-0.3, -0.5, -0.8)));
+        // Linked sun lighting when the zone provided one; the historical
+        // neutral rig stays as the fallback for scenes without it.
+        root.Children.Add(new AmbientLight(ChannelColor(doc.Lighting?.Ambient, 145)));
+        var sunTravel = SunTravelDirection(doc.Lighting?.SunDirection);
+        root.Children.Add(sunTravel is { } travel
+            ? new DirectionalLight(ChannelColor(doc.Lighting?.SunColor, 255), travel)
+            : new DirectionalLight(Colors.White, new Vector3D(-0.3, -0.5, -0.8)));
         long totalTriangles = 0;
+        var skyGroups = new HashSet<int>(doc.SkyGroups ?? []);
         var textureMaterials = new Dictionary<string, Material>(StringComparer.OrdinalIgnoreCase);
         for (var g = 0; g < groups; g++)
         {
@@ -87,20 +132,22 @@ public sealed class SceneDocument
             }
             var mesh = new MeshGeometry3D { Positions = new Point3DCollection(points), TriangleIndices = new Int32Collection(indices), TextureCoordinates = new PointCollection(uvs) };
             Brush brush = new SolidColorBrush(Color.FromArgb(rgba[3], rgba[0], rgba[1], rgba[2]));
+            bool unlitSky = skyGroups.Contains(g);
             Material material;
             if (withUv && doc.Textures.TryGetValue(g.ToString(System.Globalization.CultureInfo.InvariantCulture), out var textureName))
             {
                 if (Path.GetFileName(textureName) != textureName) throw new InvalidDataException("The texture must be alongside the scene.");
-                if (!textureMaterials.TryGetValue(textureName, out material!))
+                var cacheKey = (unlitSky ? "sky:" : "lit:") + textureName;
+                if (!textureMaterials.TryGetValue(cacheKey, out material!))
                 {
                     var bitmap = new BitmapImage(); bitmap.BeginInit(); bitmap.CacheOption = BitmapCacheOption.OnLoad;
                     bitmap.UriSource = new Uri(Path.Combine(folder, textureName)); bitmap.EndInit(); bitmap.Freeze();
                     var imageBrush = new ImageBrush(bitmap) { TileMode = TileMode.Tile, Viewport = new Rect(0, 0, 1, 1), ViewportUnits = BrushMappingMode.Absolute };
-                    imageBrush.Freeze(); material = new DiffuseMaterial(imageBrush); material.Freeze();
-                    textureMaterials.Add(textureName, material);
+                    imageBrush.Freeze(); material = unlitSky ? UnlitMaterial(imageBrush) : new DiffuseMaterial(imageBrush); material.Freeze();
+                    textureMaterials.Add(cacheKey, material);
                 }
             }
-            else material = new DiffuseMaterial(brush);
+            else material = unlitSky ? UnlitMaterial(brush) : new DiffuseMaterial(brush);
             var model = new GeometryModel3D(mesh, material) { BackMaterial = material };
             model.Freeze(); root.Children.Add(model); totalTriangles += ic / 3;
         }

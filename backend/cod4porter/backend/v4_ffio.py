@@ -85,6 +85,7 @@ class XAssetList:
     assets: tuple[XAsset, ...]
     asset_pool_offset: int
     asset_data_offset: int
+    structural_index: object | None = None
 
 @dataclass(frozen=True)
 class Ps3CompressionBlock:

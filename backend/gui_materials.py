@@ -79,9 +79,14 @@ def export_materials(machine, materials, settings, zone, out):
         # Explicit map archives override a stock library, matching conversion.
         return source.read(name) if key in source.entries else library.read(name)
 
+    from gui_shader_preview import bake_and_save
+    from cod4porter.rsx.interp_np import RsxExecError
+    techset_cache = {}
+    shader_baked = 0; shader_blocked = 0
     try:
         for hdr, name in materials.items():
             row = {'native_default_material':(4,name.casefold()) in default_assets, 'name': name, 'header': int(hdr), 'textures': [], 'shader_execution': False}
+            texture_arrays = {}
             try:
                 ts = R.u32(hdr + 0x70); table = R.u32(hdr + 0x74); count = R.u8(hdr + 0x32)
                 if count > 64: raise ValueError('Invalid material texture count.')
@@ -99,7 +104,6 @@ def export_materials(machine, materials, settings, zone, out):
                     texture['image']=image_name
                     texture['native_default_image']=(6,image_name.lstrip(',').casefold()) in default_assets
 
-                    if semantic != 2 or name in textures: continue
                     info = resources.get(image_name.lstrip(',').casefold())
                     key=(image_name.casefold(),R.u32(image_hdr+8))
                     try:
@@ -118,11 +122,26 @@ def export_materials(machine, materials, settings, zone, out):
                                 texture['ps3_resource_status']=str(exc)
                                 png,origin=source_pixels(image_name)
                             filename='texture_'+hashlib.sha256(repr(key).encode()).hexdigest()[:20]+'.png'
-                            png.save(Path(out)/filename);decoded[key]=(filename,origin)
-                        filename,origin=decoded[key];textures[name]=filename
+                            png.save(Path(out)/filename)
+                            decoded[key]=(filename,origin,np.asarray(png.convert('RGBA'),dtype=np.float32)/255.0)
+                        filename,origin,array=decoded[key]
+                        texture_arrays[index]=array
+                        if semantic == 2 and name not in textures:
+                            textures[name]=filename
                         texture['preview']=filename;texture['source']=origin
                     except (ValueError,KeyError,StopIteration,TypeError,OSError) as exc:texture['status']=str(exc)
                 row['preview_status']='textured' if name in textures else 'material color; diffuse resource unavailable'
+                if ts >= 0x10000:
+                    try:
+                        baked, bake_info = bake_and_save(machine, hdr, ts, texture_arrays, out, cache=techset_cache)
+                        textures[name] = baked
+                        row['shader_execution'] = True
+                        row['shader_preview'] = bake_info
+                        row['preview_status'] = 'rsx-shader-executed'
+                        shader_baked += 1
+                    except Exception as exc:  # noqa: BLE001 - per-material fallback, reported
+                        row['shader_execution_blocker'] = str(exc)
+                        shader_blocked += 1
             except Exception as exc: row['error'] = str(exc)
             rows.append(row)
     finally: source.close(); library.close()
@@ -132,9 +151,14 @@ def export_materials(machine, materials, settings, zone, out):
            'native_default_images':sorted(name for typ,name in default_assets if typ==6),
            'texture_library_directory':settings.get('texture_library_directory',''),
            'missing_diffuse_materials':[row['name'] for row in rows if row['name'] not in textures],
-           'shader_execution': False, 'fx_playback': False,
-           'limitations': ['Diffuse preview only; no IW3 pass/shader execution.',
+           'shader_execution': shader_baked > 0,
+           'shader_executed_materials': shader_baked,
+           'shader_execution_blocked_materials': shader_blocked,
+           'fx_playback': False,
+           'limitations': ['RSX fragment programs are executed in software over texture space; '
+                           'run-time-only values use reported neutral stand-ins (lights, lightmaps, fog).',
+                           'Vertex programs are not executed for the bake; texture animation shows its t=0 state.',
                            'PC IWD fallback previews source pixels and does not prove PS3 texture fidelity.',
-                           'FX inventory is not a particle simulation.']}
+                           'FX playback is a deterministic preview simulation, not the engine runtime.']}
     (Path(out) / 'material-rsx-report.json').write_text(json.dumps(doc, indent=2), encoding='utf-8')
     return textures

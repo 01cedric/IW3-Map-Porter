@@ -52,6 +52,13 @@ def scan_technique_sets(z:bytes)->list[TechniqueSet]:
     return out
 
 def top_level_technique_sets(z:bytes,asset_list)->list[TechniqueSet]:
+    if asset_list.structural_index is not None:
+        out=[]
+        for row in asset_list.structural_index.rows(5):
+            r=row['root']
+            out.append(TechniqueSet(r,row['name'],z[r+4],bool(z[r+5]),u32(z,r+8),
+                tuple(u32(z,r+12+i*4) for i in range(SLOTS)),row['index']))
+        return out
     assets=[a for a in asset_list.assets if a.type_id==0x05]
     scanned=sorted(scan_technique_sets(z),key=lambda x:x.root_offset)
     if len(scanned)!=len(assets):

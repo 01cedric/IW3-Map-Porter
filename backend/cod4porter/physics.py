@@ -366,6 +366,18 @@ def _model_order_authoritative(xs)->bool:
     return True
 
 def top_level_phys_presets(z:bytes,asset_list:_XAssetList,xmodels=(),excluded_inline_roots=())->tuple[PhysPreset,...]:
+    if asset_list.structural_index is not None:
+        index=asset_list.structural_index;out=[]
+        for row in index.rows(PC_PHYSPRESET_TYPE):
+            hit=_looks_pc_phys_preset(z,row['root'])
+            if hit is None:raise ValueError(f"Unsupported PhysPreset payload at structural root {row['root']:X}")
+            p,end,meta=hit;p.source_asset_index=row['index'];p.source_root_offset=row['root'];p.source_physical_end=row['end']
+            p.name=row['name'];p.name_identity_proven=True;p.serialized_name_pointer=meta['serialized_name_pointer']
+            p.serialized_sound_alias_prefix_pointer=meta['serialized_sound_alias_prefix_pointer']
+            p.sound_alias_prefix_identity_proven=True
+            p.sound_alias_prefix=index.pointer(row['root']+0x1c)
+            out.append(p)
+        return tuple(out)
     assets=sorted((a for a in asset_list.assets if a.type_id==PC_PHYSPRESET_TYPE),key=lambda a:a.index)
     if not assets:return ()
     if any(decode_pc_pointer(a.serialized_pointer).kind not in ('following','insert') for a in assets):raise ValueError('Top-level PC PhysPreset XAssets must be inline')
