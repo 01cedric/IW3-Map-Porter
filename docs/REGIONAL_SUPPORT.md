@@ -1,4 +1,4 @@
-# Regional support — 22.1.21
+# Regional support — 22.2.9
 
 Exact-file UI editing and automatic revision inspection are available.
 It does not claim universal PS3 compatibility.
