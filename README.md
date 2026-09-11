@@ -66,6 +66,7 @@ guarantee that every map starts or renders correctly on a console.
 
 ## BLES / BLUS support
 
+<<<<<<< HEAD
 | Version / region | Support in 22.2.9 |
 |---|---|
 | BLES-00149 | ✅ Menu editing and custom online startup confirmed. |
@@ -74,6 +75,16 @@ guarantee that every map starts or renders correctly on a console.
 | Other BLES / BLUS UI revisions | ❌ No editing support unless their UI matches an existing profile. Map compatibility is unverified. |
 | BLJS-10031 / BLJM-60173 | ❌ No dedicated UI editing profiles; map compatibility is unverified. |
 | Disc executables / update 1.40 | ⚠️ Metadata inspection is available; universal loader compatibility is not implemented. |
+=======
+|Version / region|Support in 22.1.21|
+|-|-|
+|BLES-00149|✅ works|
+|BLUS-30072|✅ works|
+|BLES-00115, BLES-00148, BLES-00154, BLES-00155, BLES-00156|⚠️ IDs are catalogued, but individual revisions have not all been validated. Only a matching captured UI is editable.|
+|Other BLES / BLUS UI revisions|❌ No editing support unless their UI matches an existing profile. Map compatibility is unverified.|
+|BLJS-10031 / BLJM-60173|❌ No dedicated UI editing profiles; map compatibility is unverified.|
+|Disc executables / update 1.40|⚠️ Metadata inspection is available; universal loader compatibility is not implemented.|
+>>>>>>> db1fb297fca0c722479b9d0419a6ef815f3a54e7
 
 The editor checks the actual UI file, not just the title ID. Unknown revisions are
 rejected. These limits concern UI editing and validation; they do not prove that
